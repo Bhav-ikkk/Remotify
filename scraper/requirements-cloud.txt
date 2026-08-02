@@ -1,0 +1,3 @@
+# Extra Python deps for Scrapy Cloud beyond the selected stack.
+# Keep this file (even if empty of packages) so scrapinghub.yml resolves cleanly.
+# Do NOT pin scrapy here — it ships with the Cloud stack.

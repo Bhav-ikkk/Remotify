@@ -1,0 +1,13 @@
+# Zyte Scrapy Cloud deploy config (repo root — required for GitHub sync).
+# Project ID is linked in the Scrapy Cloud UI; set it here for local `shub deploy`.
+#
+# projects:
+#   default: YOUR_ZYTE_PROJECT_ID
+
+stacks:
+  default: scrapy:2.11
+
+# Extra deps beyond the Cloud stack. Spiders only need Scrapy (provided by the stack).
+# Local installs: pip install -r scraper/requirements.txt
+requirements:
+  file: scraper/requirements-cloud.txt

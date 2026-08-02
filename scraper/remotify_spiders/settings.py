@@ -2,8 +2,8 @@
 
 BOT_NAME = "remotify_spiders"
 
-SPIDER_MODULES = ["remotify_spiders.spiders"]
-NEWSPIDER_MODULE = "remotify_spiders.spiders"
+SPIDER_MODULES = ["scraper.remotify_spiders.spiders"]
+NEWSPIDER_MODULE = "scraper.remotify_spiders.spiders"
 
 ROBOTSTXT_OBEY = False
 COOKIES_ENABLED = True
