@@ -55,6 +55,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pinging, setPinging] = useState(false);
+  const [testingTelegram, setTestingTelegram] = useState(false);
   const [banner, setBanner] = useState(null);
 
   const showBanner = useCallback((tone, message) => {
@@ -138,6 +139,50 @@ export default function SettingsPage() {
       );
     } finally {
       setPinging(false);
+    }
+  }
+
+  async function handleTelegramTest() {
+    setTestingTelegram(true);
+    try {
+      const payload = {
+        persist: true,
+      };
+      if (form.telegramBotToken.trim()) {
+        payload.telegramBotToken = form.telegramBotToken.trim();
+      }
+      if (form.telegramChatId.trim()) {
+        payload.telegramChatId = form.telegramChatId.trim();
+      }
+
+      const res = await fetch("/api/settings/test-telegram", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.message || "Telegram test failed");
+      }
+
+      if (form.telegramBotToken.trim()) {
+        setBotConfigured(true);
+        setForm((prev) => ({ ...prev, telegramBotToken: "" }));
+      }
+      showBanner(
+        "teal",
+        data.botUsername
+          ? `Telegram OK (@${data.botUsername}) — test message delivered.`
+          : data.message || "Telegram connection verified."
+      );
+    } catch (error) {
+      showBanner(
+        "red",
+        error instanceof Error ? error.message : "Telegram test failed"
+      );
+    } finally {
+      setTestingTelegram(false);
     }
   }
 
@@ -368,15 +413,11 @@ export default function SettingsPage() {
             <Button
               variant="soft"
               style={{ width: "fit-content" }}
-              onClick={() =>
-                showBanner(
-                  "gray",
-                  "Telegram test connection will be wired in Phase 6."
-                )
-              }
+              onClick={handleTelegramTest}
+              disabled={testingTelegram || loading}
             >
               <IconPlugConnected size={16} />
-              Test Connection
+              {testingTelegram ? "Testing…" : "Test Connection"}
             </Button>
           </Flex>
         </Card>
