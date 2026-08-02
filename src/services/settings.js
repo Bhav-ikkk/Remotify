@@ -8,6 +8,8 @@ export const SETTING_KEYS = {
   MIN_MATCH_SCORE: "min_match_score",
   TELEGRAM_BOT_TOKEN: "telegram_bot_token",
   TELEGRAM_CHAT_ID: "telegram_chat_id",
+  ZYTE_API_KEY: "zyte_api_key",
+  ZYTE_PROJECT_ID: "zyte_project_id",
 };
 
 /**
@@ -114,6 +116,17 @@ export async function getAppSettings({ redact = true } = {}) {
     typeof map[SETTING_KEYS.TELEGRAM_BOT_TOKEN] === "string"
       ? map[SETTING_KEYS.TELEGRAM_BOT_TOKEN]
       : "";
+  const zyteApiKey =
+    typeof map[SETTING_KEYS.ZYTE_API_KEY] === "string"
+      ? map[SETTING_KEYS.ZYTE_API_KEY]
+      : "";
+  const zyteProjectIdRaw = map[SETTING_KEYS.ZYTE_PROJECT_ID];
+  const zyteProjectId =
+    typeof zyteProjectIdRaw === "string"
+      ? zyteProjectIdRaw
+      : typeof zyteProjectIdRaw === "number"
+        ? String(zyteProjectIdRaw)
+        : "";
 
   const maxJobsRaw = map[SETTING_KEYS.MAX_JOBS];
   const minScoreRaw = map[SETTING_KEYS.MIN_MATCH_SCORE];
@@ -144,6 +157,11 @@ export async function getAppSettings({ redact = true } = {}) {
           ? map[SETTING_KEYS.TELEGRAM_CHAT_ID]
           : "",
     },
+    zyte: {
+      apiKey: redact ? maskSecret(zyteApiKey) : zyteApiKey,
+      apiKeyConfigured: Boolean(zyteApiKey),
+      projectId: zyteProjectId,
+    },
   };
 }
 
@@ -157,6 +175,8 @@ export async function getAppSettings({ redact = true } = {}) {
  *   minMatchScore?: number,
  *   telegramBotToken?: string,
  *   telegramChatId?: string,
+ *   zyteApiKey?: string,
+ *   zyteProjectId?: string,
  * }} payload
  */
 export async function saveAppSettings(payload) {
@@ -175,6 +195,9 @@ export async function saveAppSettings(payload) {
   if (typeof payload.telegramChatId === "string") {
     updates[SETTING_KEYS.TELEGRAM_CHAT_ID] = payload.telegramChatId;
   }
+  if (typeof payload.zyteProjectId === "string") {
+    updates[SETTING_KEYS.ZYTE_PROJECT_ID] = payload.zyteProjectId.trim();
+  }
 
   if (
     typeof payload.aiApiKey === "string" &&
@@ -190,6 +213,14 @@ export async function saveAppSettings(payload) {
     !looksMasked(payload.telegramBotToken)
   ) {
     updates[SETTING_KEYS.TELEGRAM_BOT_TOKEN] = payload.telegramBotToken;
+  }
+
+  if (
+    typeof payload.zyteApiKey === "string" &&
+    payload.zyteApiKey.length > 0 &&
+    !looksMasked(payload.zyteApiKey)
+  ) {
+    updates[SETTING_KEYS.ZYTE_API_KEY] = payload.zyteApiKey;
   }
 
   if (Object.keys(updates).length > 0) {

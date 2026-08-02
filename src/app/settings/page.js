@@ -19,6 +19,7 @@ import {
   IconDatabase,
   IconBrain,
   IconBrandTelegram,
+  IconCloud,
   IconClockHour4,
   IconDeviceFloppy,
   IconPlayerPlay,
@@ -33,6 +34,8 @@ const emptyForm = {
   minMatchScore: 85,
   telegramBotToken: "",
   telegramChatId: "",
+  zyteApiKey: "",
+  zyteProjectId: "",
   isEnabled: false,
   targetHourUtc: 9,
 };
@@ -52,6 +55,7 @@ export default function SettingsPage() {
   });
   const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
   const [botConfigured, setBotConfigured] = useState(false);
+  const [zyteKeyConfigured, setZyteKeyConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pinging, setPinging] = useState(false);
@@ -82,6 +86,7 @@ export default function SettingsPage() {
       setDbStatus(s.database || { ok: false, latencyMs: null });
       setAiKeyConfigured(Boolean(s.ai?.apiKeyConfigured));
       setBotConfigured(Boolean(s.telegram?.botTokenConfigured));
+      setZyteKeyConfigured(Boolean(s.zyte?.apiKeyConfigured));
       setForm((prev) => ({
         ...prev,
         aiApiKey: "",
@@ -90,6 +95,8 @@ export default function SettingsPage() {
         minMatchScore: s.ai?.minMatchScore ?? 85,
         telegramBotToken: "",
         telegramChatId: s.telegram?.chatId || "",
+        zyteApiKey: "",
+        zyteProjectId: s.zyte?.projectId || "",
         isEnabled: Boolean(schedulerJson.scheduler?.isEnabled),
         targetHourUtc:
           typeof schedulerJson.scheduler?.targetHourUtc === "number"
@@ -227,12 +234,16 @@ export default function SettingsPage() {
         maxJobs: Number(form.maxJobs),
         minMatchScore: Number(form.minMatchScore),
         telegramChatId: form.telegramChatId,
+        zyteProjectId: form.zyteProjectId,
       };
       if (form.aiApiKey.trim()) {
         settingsPayload.aiApiKey = form.aiApiKey.trim();
       }
       if (form.telegramBotToken.trim()) {
         settingsPayload.telegramBotToken = form.telegramBotToken.trim();
+      }
+      if (form.zyteApiKey.trim()) {
+        settingsPayload.zyteApiKey = form.zyteApiKey.trim();
       }
 
       const [settingsRes, schedulerRes] = await Promise.all([
@@ -265,16 +276,21 @@ export default function SettingsPage() {
       setBotConfigured(
         Boolean(settingsJson.settings?.telegram?.botTokenConfigured)
       );
+      setZyteKeyConfigured(
+        Boolean(settingsJson.settings?.zyte?.apiKeyConfigured)
+      );
       setDbStatus(settingsJson.settings?.database || dbStatus);
       setForm((prev) => ({
         ...prev,
         aiApiKey: "",
         telegramBotToken: "",
+        zyteApiKey: "",
         targetProfile: settingsJson.settings?.ai?.targetProfile || "",
         maxJobs: settingsJson.settings?.ai?.maxJobs ?? prev.maxJobs,
         minMatchScore:
           settingsJson.settings?.ai?.minMatchScore ?? prev.minMatchScore,
         telegramChatId: settingsJson.settings?.telegram?.chatId || "",
+        zyteProjectId: settingsJson.settings?.zyte?.projectId || "",
         isEnabled: Boolean(schedulerJson.scheduler?.isEnabled),
         targetHourUtc:
           typeof schedulerJson.scheduler?.targetHourUtc === "number"
@@ -316,8 +332,8 @@ export default function SettingsPage() {
             Settings
           </Heading>
           <Text color="gray" size="3">
-            Configure AI matching, Telegram delivery, and automation. Values
-            persist in Neon — nothing is hardcoded in the UI.
+            Configure AI matching, Telegram delivery, Zyte Scrapy Cloud, and
+            automation. Values persist in Neon — nothing is hardcoded in the UI.
           </Text>
         </Box>
         <Button size="3" onClick={handleSave} disabled={saving || loading}>
@@ -452,6 +468,35 @@ export default function SettingsPage() {
               <IconPlugConnected size={16} />
               {testingTelegram ? "Testing…" : "Test Connection"}
             </Button>
+          </Flex>
+        </Card>
+
+        <Card size="3">
+          <Flex direction="column" gap="3">
+            <Flex align="center" gap="2">
+              <IconCloud size={18} />
+              <Heading size="4">Zyte Scrapy Cloud</Heading>
+            </Flex>
+            <Text size="2" color="gray">
+              Used by the Wellfound scraper to pull finished spider items from
+              Scrapy Cloud Storage.
+            </Text>
+            <TextField.Root
+              type="password"
+              placeholder={
+                zyteKeyConfigured
+                  ? "API key configured — enter a new value to rotate"
+                  : "Zyte API key"
+              }
+              value={form.zyteApiKey}
+              onChange={(e) => updateField("zyteApiKey", e.target.value)}
+              autoComplete="off"
+            />
+            <TextField.Root
+              placeholder="Zyte project ID"
+              value={form.zyteProjectId}
+              onChange={(e) => updateField("zyteProjectId", e.target.value)}
+            />
           </Flex>
         </Card>
 

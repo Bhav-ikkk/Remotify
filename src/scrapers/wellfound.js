@@ -1,101 +1,38 @@
-import { http, absoluteUrl, stripHtml } from "./http.js";
 import { ScraperOutputSchema } from "./schema.js";
+import { getSetting, SETTING_KEYS } from "@/services/settings";
+import { fetchLatestZyteItems } from "@/utils/zyte-cloud";
 
 const SOURCE = "wellfound";
+const SPIDER_NAME = "wellfound";
 
 /**
- * Scrape software engineering roles from Wellfound.
- *
- * Wellfound fronts Datadome / JS challenges that block plain Axios in most
- * environments. This V1 fetcher attempts a lightweight HTML/JSON probe and
- * returns [] on bot mitigation so the pipeline stays resilient.
+ * Pull Wellfound listings from the latest finished Zyte Scrapy Cloud run.
+ * Credentials resolve DB settings first, then environment variables.
  *
  * @returns {Promise<import('zod').infer<typeof ScraperOutputSchema>>}
  */
 export async function scrape() {
   try {
-    const scrapedAt = new Date();
-    const targets = [
-      "https://wellfound.com/role/l/software-engineer/remote",
-      "https://wellfound.com/jobs?remote=true&role=engineering",
-      "https://www.wellfound.com/role/software-engineer",
-    ];
+    const { projectId, apiKey } = await resolveZyteCredentials();
 
-    for (const url of targets) {
-      try {
-        const { data, status, headers } = await http.get(url, {
-          validateStatus: () => true,
-          headers: {
-            Accept: "text/html,application/xhtml+xml",
-            Referer: "https://wellfound.com/",
-          },
-        });
-
-        if (status === 403 || status === 429) {
-          console.error(
-            `[${SOURCE}] blocked by anti-bot (HTTP ${status}) for ${url}`
-          );
-          continue;
-        }
-
-        if (status >= 400) {
-          console.error(`[${SOURCE}] HTTP ${status} for ${url}`);
-          continue;
-        }
-
-        const html = String(data);
-        if (
-          /Please enable JS and disable any ad blocker/i.test(html) ||
-          /captcha|datadome|cf-challenge/i.test(html)
-        ) {
-          console.error(
-            `[${SOURCE}] JS/captcha challenge detected for ${url}`
-          );
-          continue;
-        }
-
-        const jobs = extractJobsFromHtml(html, scrapedAt);
-        if (jobs.length > 0) {
-          return ScraperOutputSchema.parse(jobs);
-        }
-      } catch (inner) {
-        console.error(
-          `[${SOURCE}] probe failed for ${url}:`,
-          inner instanceof Error ? inner.message : inner
-        );
-      }
+    if (!projectId || !apiKey) {
+      console.error(
+        `[${SOURCE}] missing Zyte credentials (ZYTE_API_KEY / ZYTE_PROJECT_ID)`
+      );
+      return [];
     }
 
-    // Optional V1 mock when explicitly enabled for local schema demos.
-    if (process.env.REMOTIFY_WELLFOUND_MOCK === "1") {
-      return ScraperOutputSchema.parse([
-        {
-          title: "Software Engineer (Mock)",
-          company: "Wellfound Mock Co",
-          location: "Remote",
-          salary: null,
-          currency: null,
-          employmentType: "full-time",
-          experience: null,
-          description:
-            "Synthetic Wellfound fixture used when live scraping is blocked.",
-          skills: ["JavaScript"],
-          applyUrl: "https://wellfound.com/jobs/mock-software-engineer",
-          companyUrl: "https://wellfound.com",
-          sourceWebsite: SOURCE,
-          postedDate: null,
-          scrapedAt,
-        },
-      ]);
-    }
-
-    console.error(
-      `[${SOURCE}] no usable listings — returning empty array (bot mitigation)`
+    const rawItems = await fetchLatestZyteItems(
+      projectId,
+      apiKey,
+      SPIDER_NAME
     );
-    return [];
+    const jobs = rawItems.map(normalizeZyteItem).filter(Boolean);
+
+    return ScraperOutputSchema.parse(jobs);
   } catch (error) {
     console.error(
-      `[${SOURCE}] scrape failed:`,
+      `[${SOURCE}] Zyte fetch failed:`,
       error instanceof Error ? error.message : error
     );
     return [];
@@ -103,42 +40,88 @@ export async function scrape() {
 }
 
 /**
- * Best-effort extraction if HTML is served without a challenge page.
- * @param {string} html
- * @param {Date} scrapedAt
+ * @returns {Promise<{ projectId: string, apiKey: string }>}
  */
-function extractJobsFromHtml(html, scrapedAt) {
-  const jobs = [];
-  const seen = new Set();
+async function resolveZyteCredentials() {
+  const [dbApiKey, dbProjectId] = await Promise.all([
+    getSetting(SETTING_KEYS.ZYTE_API_KEY),
+    getSetting(SETTING_KEYS.ZYTE_PROJECT_ID),
+  ]);
 
-  const linkMatches = [
-    ...html.matchAll(/href="(\/jobs\/[^"]+)"[^>]*>([^<]{3,120})</gi),
-  ];
+  const apiKey =
+    (typeof dbApiKey === "string" && dbApiKey.trim()) ||
+    process.env.ZYTE_API_KEY?.trim() ||
+    "";
+  const projectId =
+    (typeof dbProjectId === "string" && dbProjectId.trim()) ||
+    (typeof dbProjectId === "number" ? String(dbProjectId) : "") ||
+    process.env.ZYTE_PROJECT_ID?.trim() ||
+    "";
 
-  for (const match of linkMatches) {
-    const applyUrl = absoluteUrl(match[1], "https://wellfound.com");
-    const title = stripHtml(match[2]);
-    if (!applyUrl || !title || seen.has(applyUrl)) continue;
-    if (!/engineer|developer|software/i.test(title)) continue;
+  return { projectId, apiKey };
+}
 
-    jobs.push({
-      title,
-      company: "Unknown Company",
-      location: "Remote",
-      salary: null,
-      currency: null,
-      employmentType: null,
-      experience: null,
-      description: `${title} — software role listed on Wellfound.`,
-      skills: [],
-      applyUrl,
-      companyUrl: null,
-      sourceWebsite: SOURCE,
-      postedDate: null,
-      scrapedAt,
-    });
-    seen.add(applyUrl);
+/**
+ * Coerce Zyte Storage JSON into JobSchema-shaped objects.
+ * @param {Record<string, unknown>} item
+ */
+function normalizeZyteItem(item) {
+  if (!item || typeof item !== "object") return null;
+
+  const applyUrl = asString(item.applyUrl);
+  const title = asString(item.title);
+  const company = asString(item.company);
+  if (!applyUrl || !title || !company) return null;
+
+  const companyUrlRaw = asString(item.companyUrl);
+  let companyUrl = null;
+  if (companyUrlRaw) {
+    try {
+      companyUrl = new URL(companyUrlRaw).toString();
+    } catch {
+      companyUrl = null;
+    }
   }
 
-  return jobs;
+  const skills = Array.isArray(item.skills)
+    ? item.skills.map((s) => String(s).trim()).filter(Boolean)
+    : [];
+
+  return {
+    title,
+    company,
+    location: asString(item.location) || "Remote",
+    salary: asNullableString(item.salary),
+    currency: asNullableString(item.currency),
+    employmentType: asNullableString(item.employmentType),
+    experience: asNullableString(item.experience),
+    description:
+      asString(item.description) || `${title} at ${company} — Wellfound listing.`,
+    skills,
+    applyUrl,
+    companyUrl,
+    sourceWebsite: asString(item.sourceWebsite) || SOURCE,
+    postedDate: coerceDate(item.postedDate),
+    scrapedAt: coerceDate(item.scrapedAt) || new Date(),
+  };
+}
+
+/** @param {unknown} value */
+function asString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** @param {unknown} value */
+function asNullableString(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  return s.length ? s : null;
+}
+
+/** @param {unknown} value */
+function coerceDate(value) {
+  if (value == null || value === "") return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
 }

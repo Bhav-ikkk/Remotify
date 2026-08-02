@@ -11,6 +11,8 @@ const settingsUpdateSchema = z.object({
   minMatchScore: z.number().min(0).max(100).optional(),
   telegramBotToken: z.string().optional(),
   telegramChatId: z.string().optional(),
+  zyteApiKey: z.string().optional(),
+  zyteProjectId: z.string().optional(),
 });
 
 export async function GET() {
