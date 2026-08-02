@@ -229,11 +229,12 @@ export async function runPipeline(manualOverride = false) {
         notificationLog.push(notifyResult);
         if (notifyResult.failed > 0) status = "partial";
 
-        const notifiedIds = topMatches.map((job) => job.id);
-        await prisma.job.updateMany({
-          where: { id: { in: notifiedIds } },
-          data: { isNotified: true },
-        });
+        if (Array.isArray(notifyResult.deliveredIds) && notifyResult.deliveredIds.length > 0) {
+          await prisma.job.updateMany({
+            where: { id: { in: notifyResult.deliveredIds } },
+            data: { isNotified: true },
+          });
+        }
       } catch (error) {
         status = "partial";
         const message =

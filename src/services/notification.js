@@ -10,16 +10,19 @@ export async function resolveTelegramCredentials() {
   const dbToken = await getSetting(SETTING_KEYS.TELEGRAM_BOT_TOKEN);
   const dbChatId = await getSetting(SETTING_KEYS.TELEGRAM_CHAT_ID);
 
-  const token =
-    (typeof dbToken === "string" && dbToken.trim()) ||
-    process.env.TELEGRAM_BOT_TOKEN ||
-    "";
-  const chatId =
-    (typeof dbChatId === "string" && dbChatId.trim()) ||
-    process.env.TELEGRAM_CHAT_ID ||
-    "";
+  const envToken = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
+  const envChatId = String(process.env.TELEGRAM_CHAT_ID || "").trim();
 
-  return { token: String(token).trim(), chatId: String(chatId).trim() };
+  const dbTokenValue =
+    typeof dbToken === "string" && dbToken.trim() ? dbToken.trim() : "";
+  const dbChatValue =
+    typeof dbChatId === "string" && dbChatId.trim() ? dbChatId.trim() : "";
+
+  // Prefer runtime env so local .env wins over stale DB placeholders.
+  const token = envToken || dbTokenValue;
+  const chatId = envChatId || dbChatValue;
+
+  return { token, chatId };
 }
 
 /**
@@ -74,7 +77,7 @@ export async function verifyTelegramConfig(token, chatId) {
 /**
  * Send top matching jobs to the configured Telegram chat.
  * @param {Array<object>} jobs
- * @returns {Promise<{ sent: number, failed: number, errors: string[] }>}
+ * @returns {Promise<{ sent: number, failed: number, errors: string[], deliveredIds: string[] }>}
  */
 export async function sendTopMatches(jobs) {
   const { token, chatId } = await resolveTelegramCredentials();
@@ -88,6 +91,7 @@ export async function sendTopMatches(jobs) {
   let sent = 0;
   let failed = 0;
   const errors = [];
+  const deliveredIds = [];
 
   for (const job of list) {
     try {
@@ -113,6 +117,7 @@ export async function sendTopMatches(jobs) {
       }
 
       sent += 1;
+      if (job?.id) deliveredIds.push(job.id);
       await logNotificationSuccess({
         action: "sendTopMatches",
         chatId,
@@ -133,7 +138,7 @@ export async function sendTopMatches(jobs) {
     }
   }
 
-  return { sent, failed, errors };
+  return { sent, failed, errors, deliveredIds };
 }
 
 /**
