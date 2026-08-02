@@ -172,6 +172,16 @@ export async function runPipeline(manualOverride = false) {
       scored = await processJobsWithAI(capped, userProfile, 1000, {
         aiService,
       });
+      const aiFailures = scored.filter((job) =>
+        String(job.aiReason || "").includes("AI evaluation failed")
+      ).length;
+      if (aiFailures > 0) {
+        errorLog.push({
+          stage: "ai",
+          message: `${aiFailures}/${scored.length} jobs failed AI evaluation.`,
+        });
+        status = "partial";
+      }
     }
     jobsProcessed = scored.length;
 
@@ -351,9 +361,16 @@ async function readStringSetting(key, fallback) {
 }
 
 async function resolveGeminiApiKey() {
+  const envKey = String(process.env.GEMINI_API_KEY || "").trim();
   const fromDb = await getSetting(SETTING_KEYS.AI_API_KEY);
-  if (typeof fromDb === "string" && fromDb.trim()) return fromDb.trim();
-  return process.env.GEMINI_API_KEY || "";
+  const dbKey = typeof fromDb === "string" ? fromDb.trim() : "";
+
+  // Prefer runtime env; ignore obvious placeholder DB values.
+  if (envKey) return envKey;
+  if (dbKey && !/test-gemini|changeme|your.?key|placeholder/i.test(dbKey)) {
+    return dbKey;
+  }
+  return dbKey || "";
 }
 
 /**
