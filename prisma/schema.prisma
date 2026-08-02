@@ -1,0 +1,103 @@
+// Remotify — Neon PostgreSQL schema (Prisma)
+// Secrets stay in runtime env; never hardcode connection strings here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Scraped remote roles plus downstream AI match metadata.
+model Job {
+  id              String    @id @default(cuid())
+  title           String
+  company         String
+  location        String
+  isRemote        Boolean   @default(true)
+  remoteToken     String? // e.g. "USA Remote", "Worldwide Remote"
+  salary          String?
+  currency        String?
+  employmentType  String?
+  experience      String?
+  description     String
+  skills          String[]  @default([])
+  applyUrl        String
+  companyUrl      String?
+  sourceWebsite   String
+  postedDate      DateTime?
+  scrapedAt       DateTime  @default(now())
+
+  // AI analysis payload (Gemini strategy layer)
+  aiScore         Float?
+  aiMatchedSkills String[]  @default([])
+  aiMissingSkills String[]  @default([])
+  aiReason        String?
+  aiRawResponse   Json?
+
+  isNotified      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([applyUrl])
+  @@index([company, title])
+  @@index([aiScore])
+  @@index([sourceWebsite])
+  @@index([scrapedAt])
+  @@map("jobs")
+}
+
+/// Flexible global key-value configuration (avoids fractured unversioned columns).
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+/// Pipeline operational flags and execution telemetry markers.
+model SchedulerConfig {
+  id              String    @id @default(cuid())
+  name            String    @unique @default("default")
+  isEnabled       Boolean   @default(false)
+  isRunning       Boolean   @default(false)
+  cronExpression  String?
+  targetHourUtc   Int?
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  lastRunStatus   String?
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("scheduler_configs")
+}
+
+/// Per-execution metrics: timing, parse counts, dedup analytics, errors, notifications.
+model RunHistory {
+  id                  String   @id @default(cuid())
+  startedAt           DateTime @default(now())
+  finishedAt          DateTime?
+  durationMs          Int?
+  status              String   @default("running") // running | success | partial | failed
+  sourcesTargeted     Int      @default(0)
+  jobsParsed          Int      @default(0)
+  jobsDeduplicated    Int      @default(0)
+  jobsProcessed       Int      @default(0)
+  jobsMatched         Int      @default(0)
+  notificationsSent   Int      @default(0)
+  errorCount          Int      @default(0)
+  errors              Json?
+  notificationLog     Json?
+  metrics             Json?
+  createdAt           DateTime @default(now())
+
+  @@index([startedAt])
+  @@index([status])
+  @@map("run_histories")
+}
