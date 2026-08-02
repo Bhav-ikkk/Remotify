@@ -249,6 +249,30 @@ export function normalizeLocation(location) {
 }
 
 /**
+ * Pull known skill tokens mentioned in free text.
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function extractSkillsFromText(text) {
+  const haystack = String(text || "").toLowerCase();
+  if (!haystack) return [];
+
+  const found = [];
+  // Longer keys first so "node.js" wins over "node"
+  const keys = Object.keys(SKILL_MAP).sort((a, b) => b.length - a.length);
+
+  for (const key of keys) {
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i");
+    if (re.test(haystack)) {
+      found.push(SKILL_MAP[key]);
+    }
+  }
+
+  return found;
+}
+
+/**
  * Normalize a scraped job payload into a clean JobSchema object.
  * Pure transformation — does not mutate the input.
  * @param {object} job
@@ -256,8 +280,16 @@ export function normalizeLocation(location) {
 export function normalizeJob(job) {
   const source = job && typeof job === "object" ? job : {};
 
+  const title = normalizeTitle(source.title);
+  const description = String(source.description || "").trim();
+  const inferred = extractSkillsFromText(`${source.title || ""} ${description}`);
+  const skills = normalizeSkills([
+    ...(Array.isArray(source.skills) ? source.skills : []),
+    ...inferred,
+  ]);
+
   const normalized = {
-    title: normalizeTitle(source.title),
+    title,
     company: String(source.company || "Unknown Company").replace(/\s+/g, " ").trim(),
     location: normalizeLocation(source.location),
     salary: source.salary == null ? null : String(source.salary),
@@ -265,8 +297,8 @@ export function normalizeJob(job) {
     employmentType:
       source.employmentType == null ? null : String(source.employmentType),
     experience: source.experience == null ? null : String(source.experience),
-    description: String(source.description || "").trim(),
-    skills: normalizeSkills(source.skills),
+    description,
+    skills,
     applyUrl: String(source.applyUrl || ""),
     companyUrl: source.companyUrl == null ? null : String(source.companyUrl),
     sourceWebsite: String(source.sourceWebsite || "unknown"),
