@@ -1,4 +1,3 @@
-import "@radix-ui/themes/styles.css";
 import "./globals.css";
 import Providers from "@/components/Providers";
 import AppNav from "@/components/AppNav";

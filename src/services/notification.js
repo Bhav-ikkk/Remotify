@@ -18,9 +18,8 @@ export async function resolveTelegramCredentials() {
   const dbChatValue =
     typeof dbChatId === "string" && dbChatId.trim() ? dbChatId.trim() : "";
 
-  // Prefer runtime env so local .env wins over stale DB placeholders.
-  const token = envToken || dbTokenValue;
-  const chatId = envChatId || dbChatValue;
+  const token = dbTokenValue || envToken;
+  const chatId = dbChatValue || envChatId;
 
   return { token, chatId };
 }
