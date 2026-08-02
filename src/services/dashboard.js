@@ -20,6 +20,7 @@ export async function getDashboardData() {
     todayJobs,
     highScoreMatches,
     topMatches,
+    featuredMatch,
     recentRuns,
     scheduler,
   ] = await Promise.all([
@@ -32,7 +33,7 @@ export async function getDashboardData() {
     }),
     prisma.job.findMany({
       where: { aiScore: { not: null } },
-      orderBy: { aiScore: "desc" },
+      orderBy: [{ aiScore: "desc" }, { scrapedAt: "desc" }],
       take: 5,
       select: {
         id: true,
@@ -42,6 +43,25 @@ export async function getDashboardData() {
         remoteToken: true,
         salary: true,
         aiScore: true,
+        aiReason: true,
+        applyUrl: true,
+        sourceWebsite: true,
+        scrapedAt: true,
+      },
+    }),
+    prisma.job.findFirst({
+      where: { aiScore: { not: null } },
+      orderBy: [{ aiScore: "desc" }, { scrapedAt: "desc" }],
+      select: {
+        id: true,
+        title: true,
+        company: true,
+        location: true,
+        remoteToken: true,
+        salary: true,
+        aiScore: true,
+        aiReason: true,
+        aiMatchedSkills: true,
         applyUrl: true,
         sourceWebsite: true,
       },
@@ -60,6 +80,7 @@ export async function getDashboardData() {
       highScoreMatches,
       minMatchScore,
     },
+    featuredMatch,
     topMatches,
     recentRuns: recentRuns.map((run) => ({
       id: run.id,
@@ -71,6 +92,7 @@ export async function getDashboardData() {
       jobsDeduplicated: run.jobsDeduplicated,
       jobsProcessed: run.jobsProcessed,
       jobsMatched: run.jobsMatched,
+      notificationsSent: run.notificationsSent,
       errorCount: run.errorCount,
     })),
     scheduler: serializeScheduler(scheduler),

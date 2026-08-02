@@ -44,7 +44,7 @@ function statusColor(status) {
 
 export default async function DashboardPage() {
   const data = await getDashboardData();
-  const { metrics, topMatches, recentRuns, scheduler } = data;
+  const { metrics, topMatches, featuredMatch, recentRuns, scheduler } = data;
 
   const metricCards = [
     {
@@ -113,6 +113,40 @@ export default async function DashboardPage() {
           <Heading size="4" mb="3">
             Top Matches Spotlight
           </Heading>
+          {featuredMatch ? (
+            <Box
+              mb="3"
+              p="3"
+              style={{
+                border: "1px solid var(--accent-a6)",
+                borderRadius: 8,
+                background: "var(--accent-a2)",
+              }}
+            >
+              <Flex justify="between" gap="3" align="start">
+                <Box>
+                  <Text size="1" color="gray">
+                    Highest score
+                  </Text>
+                  <Text as="div" weight="bold" size="4">
+                    {featuredMatch.title}
+                  </Text>
+                  <Text as="div" size="2" color="gray">
+                    {featuredMatch.company} ·{" "}
+                    {featuredMatch.remoteToken || featuredMatch.location}
+                  </Text>
+                  {featuredMatch.aiReason ? (
+                    <Text as="div" size="2" mt="2">
+                      {featuredMatch.aiReason}
+                    </Text>
+                  ) : null}
+                </Box>
+                <Badge color="teal" size="2">
+                  {Math.round(featuredMatch.aiScore)}%
+                </Badge>
+              </Flex>
+            </Box>
+          ) : null}
           {topMatches.length === 0 ? (
             <Box
               py="6"
