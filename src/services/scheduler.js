@@ -120,3 +120,61 @@ export function serializeScheduler(config) {
         : "disabled",
   };
 }
+
+/**
+ * Mark the default scheduler as currently executing.
+ */
+export async function markSchedulerRunning() {
+  await getSchedulerConfig();
+  return prisma.schedulerConfig.update({
+    where: { name: DEFAULT_NAME },
+    data: {
+      isRunning: true,
+      lastRunStatus: "running",
+    },
+  });
+}
+
+/**
+ * Return scheduler to idle and stamp last/next run metadata.
+ * @param {{ status: string, targetHourUtc?: number | null }} params
+ */
+export async function markSchedulerIdle({ status, targetHourUtc = null }) {
+  const current = await getSchedulerConfig();
+  const hour =
+    typeof targetHourUtc === "number" ? targetHourUtc : current.targetHourUtc;
+
+  return prisma.schedulerConfig.update({
+    where: { name: DEFAULT_NAME },
+    data: {
+      isRunning: false,
+      lastRunAt: new Date(),
+      lastRunStatus: status,
+      nextRunAt: typeof hour === "number" ? computeNextRunAt(hour) : null,
+    },
+  });
+}
+
+/**
+ * Whether an hourly cron ping should launch the pipeline now.
+ * @param {Awaited<ReturnType<typeof getSchedulerConfig>>} config
+ * @param {Date} [now]
+ */
+export function shouldRunScheduledPipeline(config, now = new Date()) {
+  if (!config?.isEnabled) return false;
+  if (config.isRunning) return false;
+  if (typeof config.targetHourUtc !== "number") return false;
+  if (now.getUTCHours() !== config.targetHourUtc) return false;
+
+  if (config.lastRunAt) {
+    const last = new Date(config.lastRunAt);
+    const sameHourWindow =
+      last.getUTCFullYear() === now.getUTCFullYear() &&
+      last.getUTCMonth() === now.getUTCMonth() &&
+      last.getUTCDate() === now.getUTCDate() &&
+      last.getUTCHours() === config.targetHourUtc;
+    if (sameHourWindow) return false;
+  }
+
+  return true;
+}
