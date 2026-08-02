@@ -1,1 +1,25 @@
+@import "@radix-ui/themes/styles.css";
 @import "tailwindcss";
+
+:root {
+  --remotify-canvas: #f4f7f8;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 480px at 10% -10%, #d9f3ef 0%, transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, #e7eef5 0%, transparent 50%),
+    var(--remotify-canvas);
+  color: var(--gray-12);
+  font-family: "Segoe UI", "IBM Plex Sans", system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+}
