@@ -64,3 +64,22 @@ Desktop.ini
 .env.production.local
 
 /src/generated/prisma
+
+# Python / Scrapy
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+.scrapy/
+*.log
+.pytest_cache/
+.mypy_cache/
