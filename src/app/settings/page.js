@@ -56,6 +56,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [pinging, setPinging] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);
+  const [runningPipeline, setRunningPipeline] = useState(false);
   const [banner, setBanner] = useState(null);
 
   const showBanner = useCallback((tone, message) => {
@@ -139,6 +140,38 @@ export default function SettingsPage() {
       );
     } finally {
       setPinging(false);
+    }
+  }
+
+  async function handleRunNow() {
+    setRunningPipeline(true);
+    try {
+      const res = await fetch("/api/settings/run-now", { method: "POST" });
+      const data = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.message || "Pipeline failed to start");
+      }
+
+      const result = data.result || {};
+      setSchedulerMeta((prev) => ({
+        ...prev,
+        isRunning: false,
+        lastRunAt: new Date().toISOString(),
+        lastRunStatus: result.status || "success",
+      }));
+
+      showBanner(
+        "teal",
+        `Pipeline ${result.status || "done"}: parsed ${result.jobsParsed ?? 0}, unique processed ${result.jobsProcessed ?? 0}, matched ${result.jobsMatched ?? 0}, Telegram sent ${result.notificationsSent ?? 0}.`
+      );
+    } catch (error) {
+      showBanner(
+        "red",
+        error instanceof Error ? error.message : "Pipeline run failed"
+      );
+    } finally {
+      setRunningPipeline(false);
     }
   }
 
@@ -479,15 +512,11 @@ export default function SettingsPage() {
             <Button
               variant="soft"
               style={{ width: "fit-content" }}
-              onClick={() =>
-                showBanner(
-                  "gray",
-                  "Manual scraper trigger will be wired in Phase 7."
-                )
-              }
+              onClick={handleRunNow}
+              disabled={runningPipeline || loading || schedulerMeta.isRunning}
             >
               <IconPlayerPlay size={16} />
-              Run Scraper Now
+              {runningPipeline ? "Running pipeline…" : "Run Scraper Now"}
             </Button>
           </Flex>
         </Card>
