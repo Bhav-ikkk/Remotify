@@ -10,11 +10,6 @@ export const SETTING_KEYS = {
   TELEGRAM_CHAT_ID: "telegram_chat_id",
 };
 
-const SENSITIVE_KEYS = new Set([
-  SETTING_KEYS.AI_API_KEY,
-  SETTING_KEYS.TELEGRAM_BOT_TOKEN,
-]);
-
 /**
  * Mask a secret for client responses. Empty values stay empty.
  * @param {unknown} value
