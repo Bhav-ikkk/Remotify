@@ -16,6 +16,8 @@ import {
 } from "@tabler/icons-react";
 import { getDashboardData } from "@/services/dashboard";
 
+export const dynamic = "force-dynamic";
+
 function formatStamp(value) {
   if (!value) return "—";
   try {
