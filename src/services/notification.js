@@ -141,6 +141,70 @@ export async function sendTopMatches(jobs) {
 }
 
 /**
+ * Send a short pipeline run summary to Telegram (always, after cron/manual runs).
+ * @param {{
+ *   status?: string,
+ *   jobsParsed?: number,
+ *   jobsProcessed?: number,
+ *   jobsMatched?: number,
+ *   notificationsSent?: number,
+ *   durationMs?: number,
+ *   manualOverride?: boolean,
+ * }} summary
+ * @returns {Promise<{ sent: boolean, error?: string }>}
+ */
+export async function sendRunReport(summary) {
+  const { token, chatId } = await resolveTelegramCredentials();
+  if (!token || !chatId) {
+    return { sent: false, error: "Telegram not configured" };
+  }
+
+  const status = escapeHtml(summary?.status || "unknown");
+  const parsed = Number(summary?.jobsParsed) || 0;
+  const processed = Number(summary?.jobsProcessed) || 0;
+  const matched = Number(summary?.jobsMatched) || 0;
+  const notified = Number(summary?.notificationsSent) || 0;
+  const seconds =
+    typeof summary?.durationMs === "number"
+      ? Math.round(summary.durationMs / 1000)
+      : null;
+  const trigger = summary?.manualOverride ? "Manual" : "Scheduled";
+
+  const text = [
+    `📊 <b>Remotify ${escapeHtml(trigger)} Report</b>`,
+    `Status: <b>${status}</b>`,
+    `Parsed: ${parsed} · Processed: ${processed} · Matched: ${matched}`,
+    `Telegram leads sent: ${notified}`,
+    seconds != null ? `Duration: ${seconds}s` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  try {
+    const response = await telegramApi(token, "sendMessage", {
+      chat_id: chatId,
+      text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true,
+    });
+    if (!response?.ok) {
+      const error = response?.description || "sendMessage failed";
+      await logNotificationFailure({
+        action: "sendRunReport",
+        chatId,
+        error,
+      });
+      return { sent: false, error };
+    }
+    return { sent: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[telegram] sendRunReport failed:", message);
+    return { sent: false, error: message };
+  }
+}
+
+/**
  * Format a scored job as Telegram HTML.
  * @param {object} job
  * @returns {string}

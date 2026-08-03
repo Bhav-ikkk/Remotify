@@ -6,10 +6,13 @@ import {
 } from "@/services/scheduler";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+// Hobby max is 60s; keep pipeline lean so both daily runs finish within the free tier.
+export const maxDuration = 60;
 
 /**
- * Hourly cron ping — runs the pipeline only when UTC hour matches SchedulerConfig.
+ * Dual daily cron (Hobby-safe): vercel.json fires /api/cron twice per day.
+ * Pipeline runs only when SchedulerConfig is enabled and UTC hour matches
+ * the configured morning/evening windows.
  * Optional protection: Authorization: Bearer <CRON_SECRET> when CRON_SECRET is set.
  */
 export async function GET(request) {

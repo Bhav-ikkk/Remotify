@@ -37,7 +37,8 @@ const emptyForm = {
   zyteApiKey: "",
   zyteProjectId: "",
   isEnabled: false,
-  targetHourUtc: 9,
+  targetHourUtc: 2,
+  eveningHourUtc: 12,
 };
 
 export default function SettingsPage() {
@@ -101,7 +102,11 @@ export default function SettingsPage() {
         targetHourUtc:
           typeof schedulerJson.scheduler?.targetHourUtc === "number"
             ? schedulerJson.scheduler.targetHourUtc
-            : 9,
+            : 2,
+        eveningHourUtc:
+          typeof schedulerJson.scheduler?.eveningHourUtc === "number"
+            ? schedulerJson.scheduler.eveningHourUtc
+            : 12,
       }));
       setSchedulerMeta({
         isRunning: Boolean(schedulerJson.scheduler?.isRunning),
@@ -258,6 +263,11 @@ export default function SettingsPage() {
           body: JSON.stringify({
             isEnabled: form.isEnabled,
             targetHourUtc: Number(form.targetHourUtc),
+            eveningHourUtc: Number(form.eveningHourUtc),
+            targetHoursUtc: [
+              Number(form.targetHourUtc),
+              Number(form.eveningHourUtc),
+            ],
           }),
         }),
       ]);
@@ -296,6 +306,10 @@ export default function SettingsPage() {
           typeof schedulerJson.scheduler?.targetHourUtc === "number"
             ? schedulerJson.scheduler.targetHourUtc
             : prev.targetHourUtc,
+        eveningHourUtc:
+          typeof schedulerJson.scheduler?.eveningHourUtc === "number"
+            ? schedulerJson.scheduler.eveningHourUtc
+            : prev.eveningHourUtc,
       }));
       setSchedulerMeta({
         isRunning: Boolean(schedulerJson.scheduler?.isRunning),
@@ -519,7 +533,7 @@ export default function SettingsPage() {
 
             <Box>
               <Text as="label" size="2" weight="medium" mb="1">
-                Scheduled execution hour (UTC)
+                Morning run hour (UTC)
               </Text>
               <TextField.Root
                 type="number"
@@ -530,6 +544,27 @@ export default function SettingsPage() {
                   updateField("targetHourUtc", Number(e.target.value) || 0)
                 }
               />
+              <Text size="1" color="gray">
+                Default 2 UTC ≈ 7:30–8:30 AM IST (Vercel Hobby fires within the hour)
+              </Text>
+            </Box>
+
+            <Box>
+              <Text as="label" size="2" weight="medium" mb="1">
+                Evening run hour (UTC)
+              </Text>
+              <TextField.Root
+                type="number"
+                min={0}
+                max={23}
+                value={String(form.eveningHourUtc)}
+                onChange={(e) =>
+                  updateField("eveningHourUtc", Number(e.target.value) || 0)
+                }
+              />
+              <Text size="1" color="gray">
+                Default 12 UTC ≈ 5:30–6:30 PM IST — two Hobby-safe daily crons
+              </Text>
             </Box>
 
             <Flex gap="2" wrap="wrap">

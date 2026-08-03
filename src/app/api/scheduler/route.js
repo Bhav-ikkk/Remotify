@@ -8,6 +8,13 @@ import {
 const schedulerUpdateSchema = z.object({
   isEnabled: z.boolean().optional(),
   targetHourUtc: z.number().int().min(0).max(23).nullable().optional(),
+  eveningHourUtc: z.number().int().min(0).max(23).nullable().optional(),
+  targetHoursUtc: z
+    .array(z.number().int().min(0).max(23))
+    .min(1)
+    .max(4)
+    .nullable()
+    .optional(),
   cronExpression: z.string().max(120).nullable().optional(),
   nextRunAt: z.string().datetime().nullable().optional(),
 });

@@ -4,12 +4,13 @@ import {
   getSchedulerConfig,
   markSchedulerIdle,
   markSchedulerRunning,
+  resolveTargetHours,
 } from "@/services/scheduler";
 import { normalizeJob } from "@/normalizers/index.js";
 import { filterDuplicates } from "@/utils/deduplicate.js";
 import { processJobsWithAI } from "@/utils/ai-batch.js";
 import { AIService, createGeminiProvider } from "@/services/ai/index.js";
-import { sendTopMatches } from "@/services/notification";
+import { sendTopMatches, sendRunReport } from "@/services/notification";
 
 import { scrape as scrapeSkipTheDrive } from "@/scrapers/skipthedrive.js";
 import { scrape as scrapeBuiltIn } from "@/scrapers/builtin.js";
@@ -244,11 +245,31 @@ export async function runPipeline(manualOverride = false) {
       }
     }
 
+    const durationMs = Date.now() - wallStarted;
+
+    try {
+      const report = await sendRunReport({
+        status,
+        jobsParsed,
+        jobsProcessed,
+        jobsMatched,
+        notificationsSent,
+        durationMs,
+        manualOverride,
+      });
+      notificationLog.push({ action: "runReport", ...report });
+    } catch (error) {
+      notificationLog.push({
+        action: "runReport",
+        sent: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     if (errorLog.length > 0 && status === "success") {
       status = "partial";
     }
 
-    const durationMs = Date.now() - wallStarted;
     await prisma.runHistory.update({
       where: { id: run.id },
       data: {
@@ -275,7 +296,7 @@ export async function runPipeline(manualOverride = false) {
 
     await markSchedulerIdle({
       status,
-      targetHourUtc: config.targetHourUtc,
+      targetHoursUtc: resolveTargetHours(config),
     });
 
     return {
@@ -317,7 +338,7 @@ export async function runPipeline(manualOverride = false) {
 
     await markSchedulerIdle({
       status: "failed",
-      targetHourUtc: config.targetHourUtc,
+      targetHoursUtc: resolveTargetHours(config),
     }).catch(() => {});
 
     return {
