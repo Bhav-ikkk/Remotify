@@ -1,18 +1,18 @@
 import { runPipeline } from "@/services/pipeline";
 import {
-  getSchedulerConfig,
+  ensureSchedulerArmedForCron,
   shouldRunScheduledPipeline,
   serializeScheduler,
 } from "@/services/scheduler";
 
 export const dynamic = "force-dynamic";
-// Hobby max is 60s; keep pipeline lean so both daily runs finish within the free tier.
+// Hobby max is 60s; scheduled pipeline is capped to finish within this budget.
 export const maxDuration = 60;
 
 /**
  * Dual daily cron (Hobby-safe): vercel.json fires /api/cron twice per day.
- * Pipeline runs only when SchedulerConfig is enabled and UTC hour matches
- * the configured morning/evening windows.
+ * Auto-arms the Neon scheduler (enabled + UTC 2/12) so alerts work without a
+ * manual Settings toggle after deploy.
  * Optional protection: Authorization: Bearer <CRON_SECRET> when CRON_SECRET is set.
  */
 export async function GET(request) {
@@ -24,7 +24,7 @@ export async function GET(request) {
       );
     }
 
-    const config = await getSchedulerConfig();
+    const config = await ensureSchedulerArmedForCron();
     const now = new Date();
 
     if (!shouldRunScheduledPipeline(config, now)) {
@@ -37,7 +37,8 @@ export async function GET(request) {
       });
     }
 
-    const result = await runPipeline(false);
+    // Scheduled runs use a lean budget so Hobby's 60s limit still yields a Telegram report.
+    const result = await runPipeline(false, { scheduled: true });
     return Response.json({
       success: Boolean(result.success),
       triggered: !result.aborted,

@@ -5,11 +5,15 @@ import { AIService, createGeminiProvider } from "../services/ai/index.js";
  * Never uses Promise.all for model calls — protects against 429s.
  *
  * On per-job failure: logs, sets aiScore=0, and continues.
+ * If options.deadlineMs is set, remaining jobs are marked skipped when time is up.
  *
  * @param {Array<object>} jobs
  * @param {string} userProfile
  * @param {number} [delayMs=1500]
- * @param {{ aiService?: import('../services/ai/index.js').AIService }} [options]
+ * @param {{
+ *   aiService?: import('../services/ai/index.js').AIService,
+ *   deadlineMs?: number | null,
+ * }} [options]
  * @returns {Promise<Array<object>>}
  */
 export async function processJobsWithAI(
@@ -21,11 +25,27 @@ export async function processJobsWithAI(
   const list = Array.isArray(jobs) ? jobs : [];
   const aiService =
     options.aiService || new AIService(createGeminiProvider());
+  const deadlineMs =
+    typeof options.deadlineMs === "number" ? options.deadlineMs : null;
 
   const scored = [];
 
   for (let index = 0; index < list.length; index += 1) {
     const job = list[index];
+
+    if (deadlineMs != null && Date.now() >= deadlineMs) {
+      for (let rest = index; rest < list.length; rest += 1) {
+        scored.push({
+          ...list[rest],
+          aiScore: 0,
+          aiMatchedSkills: [],
+          aiMissingSkills: [],
+          aiReason: "AI budget exhausted — score defaulted to 0.",
+          aiRawResponse: null,
+        });
+      }
+      break;
+    }
 
     try {
       const evaluation = await aiService.evaluateJob(job, userProfile);

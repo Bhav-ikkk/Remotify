@@ -26,12 +26,19 @@ const SCRAPERS = [
   { name: "wellfound", run: scrapeWellfound },
 ];
 
+/** Keep cron AI scoring inside Vercel Hobby's 60s function limit. */
+const SCHEDULED_MAX_JOBS = 12;
+const SCHEDULED_AI_DELAY_MS = 400;
+const SCHEDULED_AI_BUDGET_MS = 40_000;
+
 /**
  * End-to-end Remotify pipeline: scrape → normalize → dedupe → AI → persist → notify.
  * @param {boolean} [manualOverride=false] Bypass scheduler enabled check when true.
+ * @param {{ scheduled?: boolean }} [options]
  */
-export async function runPipeline(manualOverride = false) {
+export async function runPipeline(manualOverride = false, options = {}) {
   const wallStarted = Date.now();
+  const scheduled = Boolean(options.scheduled);
   const config = await getSchedulerConfig();
 
   if (!manualOverride && !config.isEnabled) {
@@ -72,7 +79,10 @@ export async function runPipeline(manualOverride = false) {
   let status = "success";
 
   try {
-    const maxJobs = await readNumberSetting(SETTING_KEYS.MAX_JOBS, 200);
+    const maxJobsSetting = await readNumberSetting(SETTING_KEYS.MAX_JOBS, 200);
+    const maxJobs = scheduled
+      ? Math.min(maxJobsSetting, SCHEDULED_MAX_JOBS)
+      : maxJobsSetting;
     const minMatchScore = await readNumberSetting(
       SETTING_KEYS.MIN_MATCH_SCORE,
       85
@@ -147,10 +157,11 @@ export async function runPipeline(manualOverride = false) {
         unique: uniqueJobs.length,
         capped: capped.length,
         maxJobs,
+        scheduled,
       },
     });
 
-    // --- AI scoring (sequential + throttled) ---
+    // --- AI scoring (sequential + throttled; time-budgeted on cron) ---
     let scored = [];
     if (capped.length === 0) {
       scored = [];
@@ -170,16 +181,31 @@ export async function runPipeline(manualOverride = false) {
       }));
     } else {
       const aiService = new AIService(createGeminiProvider({ apiKey }));
-      scored = await processJobsWithAI(capped, userProfile, 1000, {
+      const aiDelay = scheduled ? SCHEDULED_AI_DELAY_MS : 1000;
+      const aiDeadline = scheduled
+        ? wallStarted + SCHEDULED_AI_BUDGET_MS
+        : null;
+      scored = await processJobsWithAI(capped, userProfile, aiDelay, {
         aiService,
+        deadlineMs: aiDeadline,
       });
       const aiFailures = scored.filter((job) =>
         String(job.aiReason || "").includes("AI evaluation failed")
+      ).length;
+      const aiSkipped = scored.filter((job) =>
+        String(job.aiReason || "").includes("AI budget exhausted")
       ).length;
       if (aiFailures > 0) {
         errorLog.push({
           stage: "ai",
           message: `${aiFailures}/${scored.length} jobs failed AI evaluation.`,
+        });
+        status = "partial";
+      }
+      if (aiSkipped > 0) {
+        errorLog.push({
+          stage: "ai",
+          message: `${aiSkipped}/${scored.length} jobs skipped — cron time budget.`,
         });
         status = "partial";
       }

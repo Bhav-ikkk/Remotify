@@ -13,10 +13,11 @@ export async function getSchedulerConfig() {
     where: { name: DEFAULT_NAME },
     create: {
       name: DEFAULT_NAME,
-      isEnabled: false,
+      isEnabled: true,
       isRunning: false,
       targetHourUtc: DEFAULT_TARGET_HOURS_UTC[0],
       cronExpression: encodeTargetHours(DEFAULT_TARGET_HOURS_UTC),
+      nextRunAt: computeNextRunAtFromHours(DEFAULT_TARGET_HOURS_UTC),
     },
     update: {},
   });
@@ -218,6 +219,33 @@ export function serializeScheduler(config) {
         ? "active"
         : "disabled",
   };
+}
+
+/**
+ * Align DB schedule with vercel.json Hobby crons (UTC 2 & 12) and ensure enabled.
+ * Safe to call on every cron ping — does not reset lastRunAt.
+ */
+export async function ensureSchedulerArmedForCron() {
+  const current = await getSchedulerConfig();
+  const hours = resolveTargetHours(current);
+  const needsHours =
+    hours.length < 2 ||
+    !DEFAULT_TARGET_HOURS_UTC.every((h) => hours.includes(h));
+  const needsEnable = !current.isEnabled;
+
+  if (!needsHours && !needsEnable) {
+    return current;
+  }
+
+  return prisma.schedulerConfig.update({
+    where: { name: DEFAULT_NAME },
+    data: {
+      isEnabled: true,
+      targetHourUtc: DEFAULT_TARGET_HOURS_UTC[0],
+      cronExpression: encodeTargetHours(DEFAULT_TARGET_HOURS_UTC),
+      nextRunAt: computeNextRunAtFromHours(DEFAULT_TARGET_HOURS_UTC),
+    },
+  });
 }
 
 /**
