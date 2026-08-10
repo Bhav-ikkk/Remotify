@@ -1,8 +1,8 @@
 # Remotify
 
-**Open-source remote job intelligence pipeline** — scrape, normalize, score with AI, and notify. Built for operators who want signal, not noise.
+**Open-source remote job intelligence pipeline** — scrape, normalize, score with AI, tailor ATS resumes, and notify. Built for operators who want signal, not noise.
 
-Remotify is a lightweight Next.js automation app that collects remote roles from public boards, deduplicates them, scores fit with Gemini, and pushes the strongest matches to Telegram. Configuration lives in the database and environment — nothing is hardcoded.
+Remotify is a lightweight Next.js automation app that collects remote roles from public boards, deduplicates them, scores fit against your Postgres-backed profile (Gemini), generates a **locked ATS resume PDF** per strong match, and pushes alerts to Telegram. Configuration lives in the database and environment — nothing is hardcoded.
 
 ---
 
@@ -12,6 +12,7 @@ Remotify is a lightweight Next.js automation app that collects remote roles from
 | --- | --- |
 | Job boards flood you with noise | AI match scores + minimum threshold filters |
 | Duplicates across sources | Multi-heuristic dedup before scoring |
+| Generic one-size resumes | Locked master ATS resume + per-job light tailor |
 | Secrets scattered in code | Runtime env injection + Prisma-backed settings |
 | Overbuilt infra for a personal pipeline | Single Next.js app, Neon Postgres, zero microservices |
 
@@ -27,18 +28,18 @@ Remotify is a lightweight Next.js automation app that collects remote roles from
                                                                │
                                                                ▼
 ┌─────────────┐    ┌──────────────┐    ┌─────────────────────────────┐
-│  Dashboard  │◀───│  Neon +      │◀───│ Telegram top-N notifications│
-│  + Settings │    │  Prisma ORM  │    │ + RunHistory telemetry      │
+│  Dashboard  │◀───│  Neon +      │◀───│ Telegram: job + tailored PDF│
+│  + Settings │    │  Prisma ORM  │    │ + /grab Excel + RunHistory  │
 └─────────────┘    └──────────────┘    └─────────────────────────────┘
 ```
 
 1. **Scrape** — site modules return a uniform Zod-validated job shape.
 2. **Normalize** — titles, skills, and remoteness tokens become consistent labels.
 3. **Deduplicate** — company+title, apply URL, and similarity checks drop repeats.
-4. **Score** — Gemini evaluates each job against a target profile (`aiScore`, matched/missing skills, reason).
-5. **Notify** — top matches go to Telegram **with a tailored resume PDF**; every run writes `RunHistory` metrics.
-6. **Observe** — dashboard KPIs and settings panels stay in sync with Postgres.
-7. **On-demand** — Telegram slash commands (`/grab`, `/matches`, `/resume`) export Excel / PDF from stored leads.
+4. **Score** — Gemini evaluates each job against your **candidate profile** in Postgres.
+5. **Resume** — PDFKit renders your **locked master ATS resume**, lightly tailored per job.
+6. **Notify** — top matches go to Telegram with the tailored PDF; runs write `RunHistory`.
+7. **On-demand** — `/grab`, `/matches`, `/resume`, `/status` via Telegram webhook.
 
 ---
 
@@ -58,28 +59,61 @@ curl -X POST "$NEXT_PUBLIC_APP_URL/api/telegram/setup" \
 | `/grab` | Excel of **all** apply-open scraped leads (last 30 days) |
 | `/grab 7` | Same, last 7 days |
 | `/matches` | Excel of **AI-matched** leads only |
-| `/resume` | Master resume PDF (classic ATS layout via PDFKit) |
+| `/resume` | ATS resume PDF tailored to your best current match |
 | `/status` | Profile + lead counts |
 | `/help` | Command list |
 
-Automatic pipeline alerts still send top matches **plus** a per-job tailored resume PDF.
-
-> Tip: For slash commands, message the bot in a **private chat** or group where it can read commands. Channel bots must be admin; prefer DM for `/grab`.
+> Tip: DM the bot for slash commands. Prefer a private chat over a channel.
 
 ---
 
-## Candidate profile + resume
+## Candidate profile + locked ATS resume
 
-- **DB profile** powers AI scoring (skills, projects, priorities).
-- **Master resume** is built from that profile; job-specific runs reorder skills/projects and tweak the summary — still a normal Times-based one-column PDF (not a flashy AI template).
-- Library choice: **PDFKit** (serverless-friendly, no Chromium). Excel export uses **ExcelJS**.
+### Profile (matching brain)
+
+Remotify scores jobs against a structured **candidate profile** in Postgres (skills, projects, priorities, experience).
+
+| File | Git? | Purpose |
+| --- | --- | --- |
+| `data/profile.demo.json` | Yes | Fake sample for open-source clones |
+| `data/profile.personal.json` | **No** | Your real profile (gitignored) |
 
 ```bash
-npm run profile:seed
-npm run verify:grab          # local Excel + PDF files in .tmp-verify/
-npm run verify:grab:send     # also deliver to Telegram
+npm run profile:seed          # personal if present, else demo
+npm run profile:seed:demo     # force demo into Postgres
 ```
 
+`GET /api/profile` · `GET /api/profile?full=1`
+
+### Master resume (PDF source of truth)
+
+Your real ATS PDF is locked as JSON. Job tailoring **reorders / lightly rephrases** only — it does **not** invent employers, metrics, or skills.
+
+| File | Git? | Purpose |
+| --- | --- | --- |
+| `data/master-resume.demo.json` | Yes | Demo master resume |
+| `data/master-resume.personal.json` | **No** | Locked wording from your ATS PDF |
+| `data/Bhavik_Joshi_Resume.pdf` | **No** | Original PDF reference copy |
+
+PDF layout (PDFKit / Helvetica, serverless-safe):
+
+1. Header (name, phone, email, Portfolio / GitHub / LinkedIn)  
+2. Professional Summary  
+3. Technical Skills (categorized)  
+4. Professional Experience  
+5. Projects  
+6. Education  
+7. Achievements & Open Source  
+
+```bash
+npm run resume:send:locked -- --master   # exact master PDF → Telegram
+npm run resume:send:locked               # tailor best DB match → Telegram
+npm run resume:send                      # same via DB profile path
+npm run verify:grab                      # Excel + PDF locally in .tmp-verify/
+npm run verify:grab:send
+```
+
+Libraries: **PDFKit** (resume PDF), **ExcelJS** (`/grab` exports), **Gemini** (score + tailor with heuristic fallback).
 
 ---
 
@@ -89,7 +123,7 @@ npm run verify:grab:send     # also deliver to Telegram
 - **UI:** `@radix-ui/themes` + Tailwind CSS, `@tabler/icons-react`
 - **Data:** Neon PostgreSQL + Prisma ORM
 - **Validation / HTTP:** Zod, Axios
-- **AI / Notify:** Gemini API key + Telegram Bot API (runtime env only)
+- **AI / Notify / Docs:** Gemini · Telegram Bot API · PDFKit · ExcelJS
 
 ---
 
@@ -98,7 +132,7 @@ npm run verify:grab:send     # also deliver to Telegram
 - Node.js 20+
 - npm 10+
 - A [Neon](https://neon.tech) PostgreSQL database
-- (Later phases) Gemini API key and Telegram bot credentials
+- Gemini API key + Telegram bot credentials for full pipeline
 
 ---
 
@@ -112,9 +146,7 @@ cd Remotify
 npm install
 ```
 
-### 2. Environment blueprint
-
-Copy the example file and fill values **locally only** — never commit `.env`:
+### 2. Environment
 
 ```bash
 cp .env.example .env
@@ -123,37 +155,21 @@ cp .env.example .env
 | Variable | Purpose |
 | --- | --- |
 | `DATABASE_URL` | Neon Postgres connection string (pooled URL recommended) |
-| `GEMINI_API_KEY` | Google Gemini API key for match scoring |
+| `GEMINI_API_KEY` | Match scoring + resume tailor |
 | `TELEGRAM_BOT_TOKEN` | Bot token from BotFather |
-| `TELEGRAM_CHAT_ID` | Target chat / channel ID for alerts |
-| `NEXT_PUBLIC_APP_URL` | Public app URL (default `http://localhost:3000`) |
+| `TELEGRAM_CHAT_ID` | Target chat / channel ID |
+| `TELEGRAM_WEBHOOK_SECRET` | Optional webhook secret header |
+| `NEXT_PUBLIC_APP_URL` | Public app URL |
+| `CRON_SECRET` | Protect cron + telegram setup routes |
+| `ZYTE_API_KEY` / `ZYTE_PROJECT_ID` | Optional Wellfound via Scrapy Cloud |
 
-All database, AI, and notification secrets are injected **strictly at runtime** via environment variables.
-
-### 3. Database
+### 3. Database + profile
 
 ```bash
 npx prisma db push
 npx prisma generate
+npm run profile:seed
 ```
-
-### 3b. Candidate profile (AI matching brain)
-
-Remotify scores jobs against a structured **candidate profile** in Postgres (skills, projects, priorities, experience) — not a single vague string.
-
-- **Committed:** `data/profile.demo.json` (fake open-source sample — safe for GitHub)
-- **Local / production:** `data/profile.personal.json` (gitignored). Copy your real profile here, then seed:
-
-```bash
-npm run profile:seed          # personal if present, else demo
-npm run profile:seed:demo     # force demo data
-```
-
-Inspect the active profile: `GET /api/profile` or `GET /api/profile?full=1`.
-
-The pipeline calls `buildAiMatchProfile()` so Gemini sees your priorities and project evidence. Settings → Target Profile remains a fallback only when no active DB profile exists.
-
-**Next (planned):** master-resume template → per-job tailored PDF attached to Telegram leads.
 
 ### 4. Run
 
@@ -161,7 +177,16 @@ The pipeline calls `buildAiMatchProfile()` so Gemini sees your priorities and pr
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Connectivity can be verified via `GET /api/test-db` during Phase 1.
+Open [http://localhost:3000](http://localhost:3000). Health: `GET /api/test-db`.
+
+### Useful scripts
+
+| Script | Purpose |
+| --- | --- |
+| `npm run test:scrapers` | Isolation test for each job board scraper |
+| `npm run scrape:persist` | Scrape → normalize → dedupe → save (no AI) |
+| `npm run resume:send:locked` | Locked/tailored resume → Telegram |
+| `npm run telegram:cmd -- /status` | Simulate a bot command locally |
 
 ---
 
@@ -169,52 +194,47 @@ Open [http://localhost:3000](http://localhost:3000). Connectivity can be verifie
 
 ```text
 /data
-  ├── profile.demo.json      # Safe sample profile (committed)
-  └── profile.personal.json  # Your real profile (gitignored)
+  ├── profile.demo.json           # Sample profile (committed)
+  ├── profile.personal.json       # Real profile (gitignored)
+  ├── master-resume.demo.json     # Sample ATS master (committed)
+  └── master-resume.personal.json # Locked ATS master (gitignored)
 /prisma
-  └── schema.prisma          # Jobs, settings, scheduler, run history, candidate profile
+  └── schema.prisma               # Jobs, settings, scheduler, runs, candidate profile
 /src
-  ├── app/
-  │   ├── api/               # Route handlers (pipeline, settings, profile, health)
-  │   ├── dashboard/         # Metrics UI
-  │   ├── settings/          # Control panels
-  │   └── layout.js
-  ├── components/            # Shared UI
-  ├── services/              # database, ai, profile, notification, scheduler, pipeline
-  ├── scrapers/              # One module per job board
-  ├── normalizers/           # Title / skill / location rules
-  ├── scripts/               # seed-profile, pipeline tests
-  └── utils/                 # Dedup + AI batch helpers
+  ├── app/api/                    # cron, settings, profile, telegram webhook/setup
+  ├── services/
+  │   ├── pipeline.js             # scrape → score → notify
+  │   ├── profile.js              # AI match brief from DB
+  │   ├── resume/                 # template, tailor, PDFKit renderer
+  │   ├── export/                 # ExcelJS /grab
+  │   └── telegram/               # bot commands + client
+  ├── scrapers/
+  ├── normalizers/
+  ├── scripts/
+  └── utils/
 ```
-
 
 ---
 
 ## Design Principles
 
-- **Zero secret leakage** — `.gitignore` blocks `.env*`, `.next`, Prisma binaries, and caches. Only `.env.example` (empty values) is tracked.
-- **Zero dependency inflation** — prefer one solid library over many micro-packages. Do not add Redis, Kafka, auth frameworks, or ORMs beyond Prisma unless a phase explicitly requires it.
-- **Plain JavaScript ESM** — no TypeScript, no `.ts` / `.tsx` sources.
-- **Atomic commits** — one logical change per commit with a clear, professional message.
-- **Database-driven config** — operational knobs live in `Setting` / `SchedulerConfig`, not hardcoded constants.
+- **Zero secret leakage** — `.gitignore` blocks `.env*`, personal profile/resume files, and build artifacts.
+- **Zero dependency inflation** — prefer one solid library over many micro-packages.
+- **Plain JavaScript ESM** — no TypeScript sources.
+- **Atomic commits** — one logical change per commit.
+- **Database-driven config** — operational knobs live in `Setting` / `SchedulerConfig`.
+- **Honest resumes** — tailor may emphasize; it may not fabricate.
 
 ---
 
 ## Contributing
 
 1. Fork and branch from `main` (`feat/...`, `fix/...`, `chore/...`).
-2. Match existing folder layout and ESM import style (`import` / `export`).
+2. Match existing folder layout and ESM import style.
 3. Keep handlers thin; put business logic in `src/services/`.
 4. Validate external payloads with Zod before persistence.
-5. Never commit secrets, screenshots of `.env`, or local DB dumps.
+5. Never commit secrets, personal resume/profile JSON, or local DB dumps.
 6. Run `npm run build` before opening a PR.
-7. Prefer small PRs aligned to a single phase or module.
-
-### Code style
-
-- Prefer clarity over cleverness.
-- Catch scraper errors locally; one failure must not abort the whole pipeline.
-- Avoid new dependencies unless they replace more code than they add.
 
 ---
 
@@ -229,18 +249,14 @@ Open [http://localhost:3000](http://localhost:3000). Connectivity can be verifie
 
 ## Roadmap (phased)
 
-| Phase | Focus |
-| --- | --- |
-| **1** | Open-source foundation, Prisma schema, Neon migrations, DB health route |
-| **2** | Layout shells + settings dashboard |
-| **3** | Per-site scrapers + Zod validation |
-| **4** | Normalizers + deduplication |
-| **5** | Gemini scoring strategy wrapper |
-| **6** | Telegram notifications |
-| **7** | Scheduler + chunked pipeline + cleanup |
-| **8** | Candidate profile DB (skills/projects/priorities) wired into AI matching |
-| **9** | Master resume template + per-job tailored PDF on Telegram |
-| **10** | Broader job-source coverage + web discovery for fresh openings |
+| Phase | Focus | Status |
+| --- | --- | --- |
+| **1–7** | Foundation → scrapers → AI score → Telegram → scheduler | Done |
+| **8** | Candidate profile DB wired into AI matching | Done |
+| **9** | Locked master ATS resume + per-job tailored PDF | Done |
+| **10** | Broader job-source coverage / fresher openings | Next |
+| **11** | **Auto-apply** — fill applications at scale, track in Postgres, email archive | Planned |
+| **12** | Application CRM export (Excel) + daily quota (target ~50) | Planned |
 
 ---
 
