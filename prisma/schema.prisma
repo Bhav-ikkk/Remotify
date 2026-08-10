@@ -101,3 +101,152 @@ model RunHistory {
   @@index([status])
   @@map("run_histories")
 }
+
+/// Canonical candidate identity used for AI matching + master resume generation.
+model CandidateProfile {
+  id              String   @id @default(cuid())
+  slug            String   @unique
+  isActive        Boolean  @default(true)
+  fullName        String
+  headline        String?
+  summary         String?
+  location        String?
+  email           String?
+  phone           String?
+  websiteUrl      String?
+  portfolioUrl    String?
+  githubUrl       String?
+  linkedinUrl     String?
+  yearsExperience Float?
+  availability    String?
+  workAuth        String[] @default([])
+  targetRoles     String[] @default([])
+  targetCompanies String[] @default([])
+  avoidRoles      String[] @default([])
+  /// Master resume template config, stretch rules, positioning notes.
+  masterResume    Json?
+  /// Raw ingested snapshot for audit / re-seed.
+  rawProfile      Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  skills       ProfileSkill[]
+  projects     ProfileProject[]
+  experiences  ProfileExperience[]
+  education    ProfileEducation[]
+  priorities   ProfilePriority[]
+  sources      ProfileSource[]
+
+  @@index([isActive])
+  @@map("candidate_profiles")
+}
+
+model ProfileSkill {
+  id           String           @id @default(cuid())
+  profileId    String
+  profile      CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  name         String
+  category     String?
+  proficiency  String?
+  years        Float?
+  keywords     String[]         @default([])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([profileId, name])
+  @@index([category])
+  @@map("profile_skills")
+}
+
+model ProfileProject {
+  id          String           @id @default(cuid())
+  profileId   String
+  profile     CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  slug        String
+  name        String
+  tagline     String?
+  description String?
+  role        String?
+  status      String?
+  featured    Boolean          @default(false)
+  impact      String?
+  stack       String[]         @default([])
+  highlights  String[]         @default([])
+  liveUrl     String?
+  repoUrl     String?
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([profileId, slug])
+  @@index([featured, sortOrder])
+  @@map("profile_projects")
+}
+
+model ProfileExperience {
+  id             String           @id @default(cuid())
+  profileId      String
+  profile        CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  company        String
+  title          String
+  location       String?
+  employmentType String?
+  startDate      DateTime?
+  endDate        DateTime?
+  isCurrent      Boolean          @default(false)
+  description    String?
+  highlights     String[]         @default([])
+  stack          String[]         @default([])
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([profileId, isCurrent])
+  @@map("profile_experiences")
+}
+
+model ProfileEducation {
+  id          String           @id @default(cuid())
+  profileId   String
+  profile     CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  institution String
+  degree      String?
+  field       String?
+  startYear   Int?
+  endYear     Int?
+  notes       String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@map("profile_education")
+}
+
+model ProfilePriority {
+  id        String           @id @default(cuid())
+  profileId String
+  profile   CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  key       String
+  label     String
+  weight    Int              @default(50)
+  notes     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([profileId, key])
+  @@index([weight])
+  @@map("profile_priorities")
+}
+
+model ProfileSource {
+  id        String           @id @default(cuid())
+  profileId String
+  profile   CandidateProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  type      String
+  url       String?
+  label     String?
+  scrapedAt DateTime?
+  raw       Json?
+  createdAt DateTime         @default(now())
+
+  @@index([type])
+  @@map("profile_sources")
+}
