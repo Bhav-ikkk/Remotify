@@ -1,26 +1,14 @@
-import { scrape as scrapeSkipTheDrive } from "./skipthedrive.js";
-import { scrape as scrapeBuiltIn } from "./builtin.js";
-import { scrape as scrapeUnderdog } from "./underdog.js";
-import { scrape as scrapeJobgether } from "./jobgether.js";
-import { scrape as scrapeWellfound } from "./wellfound.js";
-
-const scrapers = [
-  { name: "SkipTheDrive", run: scrapeSkipTheDrive },
-  { name: "Built In", run: scrapeBuiltIn },
-  { name: "Underdog", run: scrapeUnderdog },
-  { name: "Jobgether", run: scrapeJobgether },
-  { name: "Wellfound", run: scrapeWellfound },
-];
+import { SCRAPERS } from "./registry.js";
 
 async function main() {
   console.log("Remotify scraper test runner — sequential isolation via allSettled\n");
 
   const settled = await Promise.allSettled(
-    scrapers.map(async ({ name, run }) => {
+    SCRAPERS.map(async ({ label, run }) => {
       const started = Date.now();
       const jobs = await run();
       return {
-        website: name,
+        website: label,
         status: "Success",
         jobsCollected: Array.isArray(jobs) ? jobs.length : 0,
         error: "",
@@ -36,7 +24,7 @@ async function main() {
     }
 
     return {
-      website: scrapers[index].name,
+      website: SCRAPERS[index].label,
       status: "Failed",
       jobsCollected: 0,
       error: result.reason instanceof Error ? result.reason.message : String(result.reason),
@@ -45,8 +33,6 @@ async function main() {
     };
   });
 
-  // Mark zero-job successful returns that logged bot blocks as Failed for clarity
-  // only when the scrape threw — empty arrays are valid soft-failures.
   console.table(
     rows.map((row) => ({
       Website: row.website,

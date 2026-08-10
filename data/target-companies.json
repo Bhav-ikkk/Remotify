@@ -1,0 +1,20 @@
+{
+  "description": "Public Greenhouse / Lever / Ashby board slugs for direct ATS ingest (auto-applyable).",
+  "companies": [
+    { "name": "Stripe", "ats": "greenhouse", "slug": "stripe" },
+    { "name": "Cloudflare", "ats": "greenhouse", "slug": "cloudflare" },
+    { "name": "Discord", "ats": "greenhouse", "slug": "discord" },
+    { "name": "Figma", "ats": "greenhouse", "slug": "figma" },
+    { "name": "Vercel", "ats": "greenhouse", "slug": "vercel" },
+    { "name": "Datadog", "ats": "greenhouse", "slug": "datadog" },
+    { "name": "GitLab", "ats": "greenhouse", "slug": "gitlab" },
+    { "name": "Elastic", "ats": "greenhouse", "slug": "elastic" },
+    { "name": "Airbnb", "ats": "greenhouse", "slug": "airbnb" },
+    { "name": "Dropbox", "ats": "greenhouse", "slug": "dropbox" },
+    { "name": "Linear", "ats": "ashby", "slug": "linear" },
+    { "name": "Ramp", "ats": "ashby", "slug": "ramp" },
+    { "name": "Ashby", "ats": "ashby", "slug": "ashby" },
+    { "name": "PostHog", "ats": "ashby", "slug": "posthog" },
+    { "name": "Mercury", "ats": "ashby", "slug": "mercury" }
+  ]
+}

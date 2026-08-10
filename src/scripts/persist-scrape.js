@@ -1,26 +1,15 @@
 /**
  * Persist unique scraped jobs (no AI) — used to keep lead store fresh for /grab.
  */
-import { scrape as scrapeSkipTheDrive } from "../scrapers/skipthedrive.js";
-import { scrape as scrapeBuiltIn } from "../scrapers/builtin.js";
-import { scrape as scrapeUnderdog } from "../scrapers/underdog.js";
-import { scrape as scrapeJobgether } from "../scrapers/jobgether.js";
-import { scrape as scrapeWellfound } from "../scrapers/wellfound.js";
+import { SCRAPERS } from "../scrapers/registry.js";
 import { normalizeJob } from "../normalizers/index.js";
 import { filterDuplicates } from "../utils/deduplicate.js";
+import { prefilterJobsForScoring } from "../utils/job-quality.js";
 import { prisma } from "../services/database.js";
-
-const scrapers = [
-  { name: "skipthedrive", run: scrapeSkipTheDrive },
-  { name: "builtin", run: scrapeBuiltIn },
-  { name: "underdog", run: scrapeUnderdog },
-  { name: "jobgether", run: scrapeJobgether },
-  { name: "wellfound", run: scrapeWellfound },
-];
 
 async function main() {
   const settled = await Promise.allSettled(
-    scrapers.map(async (s) => ({ name: s.name, jobs: await s.run() }))
+    SCRAPERS.map(async (s) => ({ name: s.name, jobs: await s.run() }))
   );
 
   const raw = [];
@@ -31,7 +20,7 @@ async function main() {
       raw.push(...r.value.jobs);
     } else {
       console.error(
-        `${scrapers[i].name} failed:`,
+        `${SCRAPERS[i].name} failed:`,
         r.reason instanceof Error ? r.reason.message : r.reason
       );
     }
@@ -39,12 +28,13 @@ async function main() {
 
   const normalized = raw.map((j) => normalizeJob(j));
   const { uniqueJobs, duplicateCount } = await filterDuplicates(normalized);
+  const quality = prefilterJobsForScoring(uniqueJobs);
   console.log(
-    `scraped=${raw.length} unique=${uniqueJobs.length} dupes=${duplicateCount}`
+    `scraped=${raw.length} unique=${uniqueJobs.length} quality=${quality.length} dupes=${duplicateCount}`
   );
 
   let saved = 0;
-  for (const job of uniqueJobs) {
+  for (const job of quality) {
     await prisma.job.upsert({
       where: { applyUrl: job.applyUrl },
       create: {

@@ -1,27 +1,19 @@
-import { scrape as scrapeSkipTheDrive } from "../scrapers/skipthedrive.js";
-import { scrape as scrapeBuiltIn } from "../scrapers/builtin.js";
-import { scrape as scrapeUnderdog } from "../scrapers/underdog.js";
-import { scrape as scrapeJobgether } from "../scrapers/jobgether.js";
-import { scrape as scrapeWellfound } from "../scrapers/wellfound.js";
+/**
+ * Persist unique scraped jobs (no AI) — used to keep lead store fresh for /grab.
+ */
+import { SCRAPERS } from "../scrapers/registry.js";
 import { normalizeJob } from "../normalizers/index.js";
 import { filterDuplicates } from "../utils/deduplicate.js";
+import { prefilterJobsForScoring } from "../utils/job-quality.js";
 import { prisma } from "../services/database.js";
 
-const scrapers = [
-  { name: "SkipTheDrive", run: scrapeSkipTheDrive },
-  { name: "Built In", run: scrapeBuiltIn },
-  { name: "Underdog", run: scrapeUnderdog },
-  { name: "Jobgether", run: scrapeJobgether },
-  { name: "Wellfound", run: scrapeWellfound },
-];
-
 async function main() {
-  console.log("Remotify Phase 4 pipeline — scrape → normalize → dedupe\n");
+  console.log("Remotify pipeline smoke — scrape → normalize → quality → dedupe\n");
 
   const settled = await Promise.allSettled(
-    scrapers.map(async ({ name, run }) => {
+    SCRAPERS.map(async ({ label, run }) => {
       const jobs = await run();
-      return { name, jobs: Array.isArray(jobs) ? jobs : [] };
+      return { name: label, jobs: Array.isArray(jobs) ? jobs : [] };
     })
   );
 
@@ -35,7 +27,7 @@ async function main() {
       };
     }
     return {
-      source: scrapers[index].name,
+      source: SCRAPERS[index].label,
       scraped: 0,
       jobs: [],
       error:
@@ -71,6 +63,7 @@ async function main() {
   }
 
   const { uniqueJobs, duplicateCount } = await filterDuplicates(normalized);
+  const qualityJobs = prefilterJobsForScoring(uniqueJobs);
 
   console.log("\nPipeline summary");
   console.table([
@@ -80,19 +73,20 @@ async function main() {
       "Normalize Errors": normalizeErrors,
       "Duplicates Removed": duplicateCount,
       "Final Unique Count": uniqueJobs.length,
+      "Quality Filtered": qualityJobs.length,
     },
   ]);
 
-  const sample = uniqueJobs.slice(0, 8).map((job) => ({
+  const sample = qualityJobs.slice(0, 8).map((job) => ({
     Title: job.title,
-    Company: job.company.slice(0, 28),
+    Company: String(job.company || "").slice(0, 28),
     Location: job.location,
-    Skills: job.skills.slice(0, 4).join(", "),
+    Skills: (job.skills || []).slice(0, 4).join(", "),
     Source: job.sourceWebsite,
   }));
 
   if (sample.length) {
-    console.log("\nSample normalized unique jobs");
+    console.log("\nSample quality-filtered unique jobs");
     console.table(sample);
   }
 
@@ -105,6 +99,7 @@ async function main() {
         normalizeErrors,
         duplicatesRemoved: duplicateCount,
         finalUniqueCount: uniqueJobs.length,
+        qualityFiltered: qualityJobs.length,
       },
       null,
       2
