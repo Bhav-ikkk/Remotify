@@ -255,8 +255,46 @@ Open [http://localhost:3000](http://localhost:3000). Health: `GET /api/test-db`.
 | **8** | Candidate profile DB wired into AI matching | Done |
 | **9** | Locked master ATS resume + per-job tailored PDF | Done |
 | **10** | Broader job-source coverage / fresher openings | Next |
-| **11** | **Auto-apply** — fill applications at scale, track in Postgres, email archive | Planned |
-| **12** | Application CRM export (Excel) + daily quota (target ~50) | Planned |
+| **11** | **Auto-apply** — local Playwright worker, Postgres CRM, Gmail digest, 35/day quota | Done |
+| **12** | Application CRM export (Excel) + Telegram approvals | Done |
+
+---
+
+## Auto-apply (free, 30–35/day)
+
+Vercel is the **brain** (queue + tracking). Your PC is the **hands** (Playwright). No paid hosting.
+
+```bash
+# 1) Push schema + seed identity + enqueue scored jobs
+npx prisma db push
+npm run apply:enqueue
+
+# 2) Start Next.js (API for claim/report)
+npm run dev
+
+# 3) On this machine — dry run first (fills forms, does not submit)
+npm install -D playwright
+npx playwright install chromium
+APPLY_DRY_RUN=1 npm run apply:worker
+
+# 4) Live submit (Greenhouse / Lever / Ashby only)
+npm run apply:worker
+```
+
+| Setting (DB) | Default |
+| --- | --- |
+| `daily_apply_quota` | 35 |
+| `apply_min_score` | 75 |
+| `apply_enabled` | true |
+| `apply_email_to` | your Gmail |
+
+Gmail digest (free): set `GMAIL_USER` + `GMAIL_APP_PASSWORD` (Google App Password).
+
+Telegram: `/apply_status` · `/approvals` · `/approve <id>` · `/skip <id>`
+
+Dashboard: [/applications](/applications)
+
+Unsupported ATS (Workday, captcha, custom) → `needs_review` (never fake-submit).
 
 ---
 
