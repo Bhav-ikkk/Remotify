@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { handleTelegramUpdate } from "@/services/telegram/bot-commands";
 
+/** Excel + PDF generation can exceed default serverless budgets. */
+export const maxDuration = 60;
+
 /**
  * Telegram Bot webhook — receives /grab, /matches, /resume, /help, /status.
  * Optional header: X-Telegram-Bot-Api-Secret-Token when TELEGRAM_WEBHOOK_SECRET is set.
