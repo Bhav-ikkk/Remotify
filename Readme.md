@@ -6,6 +6,8 @@ Self-hostable open-source pipeline — scrape remote jobs, score fit with AI, ta
 
 Open source · MIT · $0 hosting (Vercel brain + local Playwright hands)
 
+Launch / stars playbook: [`docs/MARKETING.md`](docs/MARKETING.md)
+
 Remotify is a lightweight Next.js automation app that collects remote roles from public boards + company ATS APIs, deduplicates them, quality-prefilters titles, scores fit against your Postgres-backed profile (Gemini), generates a **locked ATS resume PDF** per strong match, queues auto-apply (preferring submitable ATS URLs), and pushes alerts to Telegram. Configuration lives in the database and environment — nothing is hardcoded.
 
 **Positioning vs LoopCV / Simplify:** quality-gated local apply you own, open source, no LinkedIn bots.
