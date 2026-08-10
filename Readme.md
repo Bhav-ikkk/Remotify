@@ -1,8 +1,14 @@
 # Remotify
 
-**Open-source remote job intelligence pipeline** — scrape, normalize, score with AI, tailor ATS resumes, and notify. Built for operators who want signal, not noise.
+**Apply with intent, not volume.**
 
-Remotify is a lightweight Next.js automation app that collects remote roles from public boards, deduplicates them, scores fit against your Postgres-backed profile (Gemini), generates a **locked ATS resume PDF** per strong match, and pushes alerts to Telegram. Configuration lives in the database and environment — nothing is hardcoded.
+Self-hostable open-source pipeline — scrape remote jobs, score fit with AI, tailor ATS resumes, and auto-apply on Greenhouse / Lever / Ashby. Built for operators who want interviews, not spray.
+
+Open source · MIT · $0 hosting (Vercel brain + local Playwright hands)
+
+Remotify is a lightweight Next.js automation app that collects remote roles from public boards + company ATS APIs, deduplicates them, quality-prefilters titles, scores fit against your Postgres-backed profile (Gemini), generates a **locked ATS resume PDF** per strong match, queues auto-apply (preferring submitable ATS URLs), and pushes alerts to Telegram. Configuration lives in the database and environment — nothing is hardcoded.
+
+**Positioning vs LoopCV / Simplify:** quality-gated local apply you own, open source, no LinkedIn bots.
 
 ---
 
@@ -10,11 +16,12 @@ Remotify is a lightweight Next.js automation app that collects remote roles from
 
 | Problem | Remotify approach |
 | --- | --- |
-| Job boards flood you with noise | AI match scores + minimum threshold filters |
-| Duplicates across sources | Multi-heuristic dedup before scoring |
+| Job boards flood you with noise | Title/remote prefilter + AI match scores + min threshold |
+| Aggregator links you can't auto-fill | Prefer Greenhouse / Lever / Ashby apply URLs for quota |
+| Duplicates across sources | Multi-heuristic dedup + normalized apply-key |
 | Generic one-size resumes | Locked master ATS resume + per-job light tailor |
 | Secrets scattered in code | Runtime env injection + Prisma-backed settings |
-| Overbuilt infra for a personal pipeline | Single Next.js app, Neon Postgres, zero microservices |
+| Overbuilt infra for a personal pipeline | Single Next.js app, Neon Postgres, local worker |
 
 ---
 
@@ -22,24 +29,25 @@ Remotify is a lightweight Next.js automation app that collects remote roles from
 
 ```text
 ┌─────────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────┐
-│  Scrapers   │───▶│ Normalizers  │───▶│ Deduplicator│───▶│ AI Score │
-│ (per-site)  │    │ titles/skills│    │ company+URL │    │ (Gemini) │
+│  Scrapers   │───▶│ Normalizers  │───▶│ Deduplicator│───▶│ Prefilter│
+│ boards+ATS  │    │ titles/skills│    │ company+URL │    │ title/ATS│
 └─────────────┘    └──────────────┘    └─────────────┘    └────┬─────┘
                                                                │
                                                                ▼
 ┌─────────────┐    ┌──────────────┐    ┌─────────────────────────────┐
-│  Dashboard  │◀───│  Neon +      │◀───│ Telegram: job + tailored PDF│
-│  + Settings │    │  Prisma ORM  │    │ + /grab Excel + RunHistory  │
+│ Local worker│◀───│ Apply queue  │◀───│ AI score → Telegram + PDF   │
+│ Playwright  │    │ prefer ATS   │    │ + enqueue (35/day)          │
 └─────────────┘    └──────────────┘    └─────────────────────────────┘
 ```
 
-1. **Scrape** — site modules return a uniform Zod-validated job shape.
+1. **Scrape** — Remotive, RemoteOK, Himalayas, Arbeitnow, company Greenhouse/Lever/Ashby boards, plus discovery boards.
 2. **Normalize** — titles, skills, and remoteness tokens become consistent labels.
 3. **Deduplicate** — company+title, apply URL, and similarity checks drop repeats.
-4. **Score** — Gemini evaluates each job against your **candidate profile** in Postgres.
-5. **Resume** — PDFKit renders your **locked master ATS resume**, lightly tailored per job.
-6. **Notify** — top matches go to Telegram with the tailored PDF; runs write `RunHistory`.
-7. **On-demand** — `/grab`, `/matches`, `/resume`, `/status` via Telegram webhook.
+4. **Prefilter** — title allow/block + remote preference; auto-ATS ranked first for scoring budget.
+5. **Score** — Gemini evaluates each job against your **candidate profile** in Postgres.
+6. **Resume** — PDFKit renders your **locked master ATS resume**, lightly tailored per job.
+7. **Apply** — enqueue high scores (prefer auto-submit ATS); local Playwright worker submits.
+8. **Notify** — matches + apply digest to Telegram; runs write `RunHistory`.
 
 ---
 
@@ -60,6 +68,8 @@ curl -X POST "$NEXT_PUBLIC_APP_URL/api/telegram/setup" \
 | `/grab 7` | Same, last 7 days |
 | `/matches` | Excel of **AI-matched** leads only |
 | `/resume` | ATS resume PDF tailored to your best current match |
+| `/apply_status` | Auto-apply quota + queue |
+| `/apply_digest` | Daily apply KPI digest |
 | `/status` | Profile + lead counts |
 | `/help` | Command list |
 
@@ -184,7 +194,11 @@ Open [http://localhost:3000](http://localhost:3000). Health: `GET /api/test-db`.
 | Script | Purpose |
 | --- | --- |
 | `npm run test:scrapers` | Isolation test for each job board scraper |
-| `npm run scrape:persist` | Scrape → normalize → dedupe → save (no AI) |
+| `npm run scrape:persist` | Scrape → normalize → quality → dedupe → save (no AI) |
+| `npm run score:backfill` | Score unscored quality jobs + enqueue |
+| `npm run apply:smoke` | Verify ATS board ingest + auto-submit detect |
+| `npm run apply:worker:schedule` | Post-cron local worker helper |
+| `npm run apply:digest` | Send Telegram apply KPI digest |
 | `npm run resume:send:locked` | Locked/tailored resume → Telegram |
 | `npm run telegram:cmd -- /status` | Simulate a bot command locally |
 
@@ -254,9 +268,9 @@ Open [http://localhost:3000](http://localhost:3000). Health: `GET /api/test-db`.
 | **1–7** | Foundation → scrapers → AI score → Telegram → scheduler | Done |
 | **8** | Candidate profile DB wired into AI matching | Done |
 | **9** | Locked master ATS resume + per-job tailored PDF | Done |
-| **10** | Broader job-source coverage / fresher openings | Next |
+| **10** | Broader job-source coverage (free APIs + ATS boards) + quality prefilter | Done |
 | **11** | **Auto-apply** — local Playwright worker, Postgres CRM, Gmail digest, 35/day quota | Done |
-| **12** | Application CRM export (Excel) + Telegram approvals | Done |
+| **12** | Application CRM export (Excel) + Telegram approvals + apply KPIs | Done |
 
 ---
 
@@ -286,15 +300,22 @@ npm run apply:worker
 | `daily_apply_quota` | 35 |
 | `apply_min_score` | 75 |
 | `apply_enabled` | true |
+| `apply_prefer_auto_ats` | true (Greenhouse/Lever/Ashby fill quota first) |
 | `apply_email_to` | your Gmail |
+
+Target company boards: edit [`data/target-companies.json`](data/target-companies.json).
 
 Gmail digest (free): set `GMAIL_USER` + `GMAIL_APP_PASSWORD` (Google App Password).
 
-Telegram: `/apply_status` · `/approvals` · `/approve <id>` · `/skip <id>`
+Telegram: `/apply_status` · `/apply_digest` · `/approvals` · `/approve <id>` · `/skip <id>`
 
-Dashboard: [/applications](/applications)
+Dashboard: [/applications](/applications) — queued / submitted / needs_review / submit rate.
+
+Schedule the worker after cron: see [`src/workers/apply/README.md`](src/workers/apply/README.md).
 
 Unsupported ATS (Workday, captcha, custom) → `needs_review` (never fake-submit).
+
+RemoteOK / Remotive require attribution if you republish their feeds.
 
 ---
 
