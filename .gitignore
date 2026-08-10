@@ -76,6 +76,7 @@ Desktop.ini
 
 # Verification artifacts
 .tmp-verify/
+.tmp-applications/
 
 /src/generated/prisma
 
