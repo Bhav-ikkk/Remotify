@@ -67,6 +67,12 @@ async function main() {
     `\nScrapers returning schema-valid jobs: ${successesWithData.length}/${rows.length}`
   );
 
+  if (rows.some((row) => row.website === "Wellfound" && row.jobsCollected === 0)) {
+    console.log(
+      "Note: Wellfound requires ZYTE_API_KEY + ZYTE_PROJECT_ID (DB settings or env)."
+    );
+  }
+
   if (successesWithData.length === 0) {
     process.exitCode = 1;
   }
