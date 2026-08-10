@@ -10,6 +10,13 @@ import {
 } from "../export/jobs-excel.js";
 import { getProfileSummary, getActiveProfile } from "../profile.js";
 import { generateMasterResumePdf } from "../resume/pdf.js";
+import {
+  getApplyStatusSummary,
+  listApplications,
+  reportApplication,
+  enqueueEligibleJobs,
+} from "../apply/queue.js";
+import { prisma } from "../database.js";
 
 const BOT_COMMANDS = [
   {
@@ -23,6 +30,22 @@ const BOT_COMMANDS = [
   {
     command: "resume",
     description: "ATS resume PDF tailored to best current job match",
+  },
+  {
+    command: "apply_status",
+    description: "Auto-apply quota and queue snapshot",
+  },
+  {
+    command: "approvals",
+    description: "List applications needing manual review",
+  },
+  {
+    command: "approve",
+    description: "Mark needs_review application as submitted: /approve <id>",
+  },
+  {
+    command: "skip",
+    description: "Skip a needs_review application: /skip <id>",
   },
   {
     command: "help",
@@ -123,6 +146,21 @@ export async function handleTelegramUpdate(update) {
 
     case "status":
       return handleStatus(token, chatId);
+
+    case "apply_status":
+      return handleApplyStatus(token, chatId);
+
+    case "approvals":
+      return handleApprovals(token, chatId);
+
+    case "approve":
+      return handleApproveSkip(token, chatId, command.args, "submitted");
+
+    case "skip":
+      return handleApproveSkip(token, chatId, command.args, "skipped");
+
+    case "enqueue":
+      return handleEnqueue(token, chatId);
 
     default:
       await sendText(
@@ -242,6 +280,7 @@ async function handleStatus(token, chatId) {
   const summary = await getProfileSummary();
   const { jobs: allJobs } = await queryGrabJobs({ mode: "all", days: 30 });
   const { jobs: matchJobs } = await queryGrabJobs({ mode: "matches", days: 30 });
+  const apply = await getApplyStatusSummary();
 
   const lines = [
     "<b>Remotify status</b>",
@@ -249,11 +288,107 @@ async function handleStatus(token, chatId) {
       ? `Profile: <b>${escapeHtml(summary.profile.fullName)}</b> · ${summary.profile.skillCount} skills · ${summary.profile.projectCount} projects`
       : "Profile: <i>not configured</i>",
     `Leads (30d): <b>${allJobs.length}</b> apply-open · <b>${matchJobs.length}</b> matched`,
+    `Apply today: <b>${apply.used}/${apply.quota}</b> · queued ${apply.queued} · review ${apply.needsReview}`,
     "",
-    "Commands: /grab · /matches · /resume · /help",
+    "Commands: /grab · /matches · /resume · /apply_status · /approvals · /help",
   ];
   await sendText(token, chatId, lines.join("\n"));
   return { handled: true, command: "status" };
+}
+
+async function handleApplyStatus(token, chatId) {
+  const s = await getApplyStatusSummary();
+  await sendText(
+    token,
+    chatId,
+    [
+      "<b>Auto-apply status</b>",
+      `Enabled: <b>${s.enabled ? "yes" : "no"}</b>`,
+      `Quota today: <b>${s.used}/${s.quota}</b> (remaining ${s.remaining})`,
+      `Min score: ${s.minScore}`,
+      `Queued: ${s.queued} · In progress: ${s.preparing}`,
+      `Submitted today: ${s.submittedToday}`,
+      `Needs review: ${s.needsReview}`,
+      `Failed today: ${s.failedToday}`,
+      "",
+      "Local worker: <code>npm run apply:worker</code>",
+    ].join("\n")
+  );
+  return { handled: true, command: "apply_status" };
+}
+
+async function handleApprovals(token, chatId) {
+  const rows = await listApplications({ status: "needs_review", take: 10 });
+  if (rows.length === 0) {
+    await sendText(token, chatId, "No applications in <b>needs_review</b>.");
+    return { handled: true, command: "approvals", count: 0 };
+  }
+
+  const lines = [
+    `<b>Needs review (${rows.length})</b>`,
+    ...rows.map((app, i) => {
+      const title = escapeHtml(app.job?.title || "role");
+      const company = escapeHtml(app.job?.company || "");
+      const id = escapeHtml(app.id);
+      const url = escapeHtml(app.applyUrl);
+      return `${i + 1}. ${title} @ ${company}\n<code>${id}</code>\n<a href="${url}">Apply link</a>\n/approve ${id} · /skip ${id}`;
+    }),
+  ];
+  await sendText(token, chatId, lines.join("\n\n"));
+  return { handled: true, command: "approvals", count: rows.length };
+}
+
+/**
+ * @param {string} token
+ * @param {string} chatId
+ * @param {string[]} args
+ * @param {'submitted'|'skipped'} status
+ */
+async function handleApproveSkip(token, chatId, args, status) {
+  const id = String(args?.[0] || "").trim();
+  if (!id) {
+    await sendText(
+      token,
+      chatId,
+      status === "submitted"
+        ? "Usage: <code>/approve &lt;applicationId&gt;</code>"
+        : "Usage: <code>/skip &lt;applicationId&gt;</code>"
+    );
+    return { handled: true, command: status === "submitted" ? "approve" : "skip", ok: false };
+  }
+
+  const existing = await prisma.application.findUnique({ where: { id } });
+  if (!existing) {
+    await sendText(token, chatId, `No application <code>${escapeHtml(id)}</code>`);
+    return { handled: true, command: status === "submitted" ? "approve" : "skip", ok: false };
+  }
+
+  const updated = await reportApplication({
+    applicationId: id,
+    status,
+    confirmationText:
+      status === "submitted" ? "Marked submitted via Telegram /approve" : "Skipped via Telegram /skip",
+  });
+
+  await sendText(
+    token,
+    chatId,
+    `Application <code>${escapeHtml(id)}</code> → <b>${escapeHtml(updated.status)}</b>\n${escapeHtml(updated.job?.title || "")} @ ${escapeHtml(updated.job?.company || "")}`
+  );
+  return { handled: true, command: status === "submitted" ? "approve" : "skip", ok: true };
+}
+
+async function handleEnqueue(token, chatId) {
+  await sendText(token, chatId, "Enqueueing eligible jobs…");
+  const result = await enqueueEligibleJobs();
+  await sendText(
+    token,
+    chatId,
+    result.enabled === false
+      ? "Apply queue is disabled in settings."
+      : `Enqueued <b>${result.enqueued}</b>. Remaining quota capacity: ${result.remaining}/${result.quota ?? 35}.`
+  );
+  return { handled: true, command: "enqueue", ...result };
 }
 
 function helpText() {
@@ -264,10 +399,14 @@ function helpText() {
     "/grab 7 — same, last 7 days",
     "/matches — Excel of <b>AI-matched</b> leads only",
     "/resume — ATS resume PDF tailored to your best current match",
+    "/apply_status — auto-apply quota + queue",
+    "/approvals — needs_review list",
+    "/approve &lt;id&gt; — mark reviewed app as submitted",
+    "/skip &lt;id&gt; — skip a reviewed app",
     "/status — profile + lead counts",
     "/help — this message",
     "",
-    "Matched alerts send the job + a tailored resume PDF automatically.",
+    "Run <code>npm run apply:worker</code> locally to fill Greenhouse/Lever/Ashby forms ($0).",
   ].join("\n");
 }
 
