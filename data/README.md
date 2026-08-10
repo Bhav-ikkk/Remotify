@@ -2,14 +2,17 @@
 
 | File | Committed? | Purpose |
 | --- | --- | --- |
-| `profile.demo.json` | Yes | Fake sample for open-source clones |
+| `profile.demo.json` | Yes | Fake sample profile for open-source clones |
 | `profile.personal.json` | **No** (gitignored) | Your real profile — skills, projects, priorities |
+| `master-resume.demo.json` | Yes | Demo ATS master resume |
+| `master-resume.personal.json` | **No** (gitignored) | Locked wording from your real ATS PDF |
+| `Bhavik_Joshi_Resume.pdf` | **No** (gitignored) | Original resume reference copy |
 
-## Seed
+## Seed / resume
 
 ```bash
-npm run profile:seed        # personal if present, else demo
-npm run profile:seed:demo   # force demo into Postgres
+npm run profile:seed
+npm run resume:send          # tailor best match + Telegram PDF
 ```
 
-Never commit `profile.personal.json`. Keep production DB seeded from your local personal file or a secure one-off seed.
+Resume PDFs are generated from `master-resume.*.json` (not invented copy). Job tailoring only reorders/rephrases within those facts.
