@@ -1,6 +1,6 @@
 import { ScraperOutputSchema } from "./schema.js";
-import { getSetting, SETTING_KEYS } from "@/services/settings";
-import { fetchLatestZyteItems } from "@/utils/zyte-cloud";
+import { getSetting, SETTING_KEYS } from "../services/settings.js";
+import { fetchLatestZyteItems } from "../utils/zyte-cloud.js";
 
 const SOURCE = "wellfound";
 const SPIDER_NAME = "wellfound";
