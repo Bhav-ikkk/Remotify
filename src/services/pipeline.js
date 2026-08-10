@@ -12,6 +12,8 @@ import { processJobsWithAI } from "@/utils/ai-batch.js";
 import { AIService, createGeminiProvider } from "@/services/ai/index.js";
 import { sendTopMatches, sendRunReport } from "@/services/notification";
 import { buildAiMatchProfile } from "@/services/profile";
+import { enqueueEligibleJobs } from "@/services/apply/queue";
+import { telegramApi, resolveTelegramCredentials } from "@/services/telegram/client";
 
 import { scrape as scrapeSkipTheDrive } from "@/scrapers/skipthedrive.js";
 import { scrape as scrapeBuiltIn } from "@/scrapers/builtin.js";
@@ -268,6 +270,42 @@ export async function runPipeline(manualOverride = false, options = {}) {
         errorLog.push({ stage: "notify", message });
         notificationLog.push({ status: "failed", message });
       }
+    }
+
+    // --- Enqueue auto-apply candidates (Vercel-safe; worker runs locally) ---
+    try {
+      const enqueueResult = await enqueueEligibleJobs();
+      notificationLog.push({ action: "applyEnqueue", ...enqueueResult });
+      if (enqueueResult.enqueued > 0) {
+        try {
+          const { token, chatId } = await resolveTelegramCredentials();
+          if (token && chatId) {
+            await telegramApi(token, "sendMessage", {
+              chat_id: chatId,
+              text: [
+                `<b>Apply queue</b>: +${enqueueResult.enqueued} jobs`,
+                `Quota remaining today: ${enqueueResult.remaining}/${enqueueResult.quota}`,
+                `Min score: ${enqueueResult.minScore}`,
+                "",
+                "Start local worker: <code>npm run apply:worker</code>",
+              ].join("\n"),
+              parse_mode: "HTML",
+              disable_web_page_preview: true,
+            });
+          }
+        } catch (tgErr) {
+          notificationLog.push({
+            action: "applyEnqueueNotify",
+            message:
+              tgErr instanceof Error ? tgErr.message : String(tgErr),
+          });
+        }
+      }
+    } catch (error) {
+      errorLog.push({
+        stage: "applyEnqueue",
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
 
     const durationMs = Date.now() - wallStarted;
