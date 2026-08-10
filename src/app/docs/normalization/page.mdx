@@ -1,111 +1,103 @@
 export const metadata = {
-  title: "Normalization & BDD · Remotify Docs",
-  description: "Normalization rules and Given/When/Then product behaviors.",
+  title: "Normalization & quality · Remotify Docs",
+  description:
+    "How Remotify normalizes titles, skills, and locations, then quality-filters before AI spend.",
 };
 
-# Normalization & BDD
+# Normalization & quality
 
-## Normalization
+Before Gemini spends tokens, Remotify forces jobs into a **canonical shape** and drops low-signal titles. Owners: `src/normalizers/index.js`, `src/utils/job-quality.js`, `src/scrapers/schema.js`.
 
-All jobs pass `normalizeJob()` then Zod `JobSchema`.
+## Why this layer exists
 
-### Title buckets (first match wins)
+Scrapers disagree on everything: “Sr. React Eng”, “Senior React Engineer”, “Remote - US”, skill tags as strings vs arrays. Without normalization:
 
-| Bucket | Patterns include |
-| --- | --- |
-| Full Stack Engineer | full stack / fullstack |
-| Mobile Engineer | iOS, Android, React Native, Flutter |
-| DevOps Engineer | devops, SRE, platform engineer |
-| Data Engineer | data/ML/AI engineer, data scientist |
-| Frontend Engineer | frontend, UI, React/Vue/Angular developer |
-| Backend Engineer | backend, Node/Java/Python/Go API |
+- Dedupe misses duplicates → wasted AI  
+- Profile matching becomes noisy  
+- Apply ATS detection still works on URL, but human digests look chaotic  
 
-Else: whitespace-collapsed original title.
+## Zod boundary (ingress contract)
+
+`JobSchema` in `scrapers/schema.js` is the fence. Invalid jobs never enter normalize/AI.
+
+Minimum expectations typically include: title, company, description, apply URL, source. Scrapers may soft-drop locally before returning.
+
+## Normalization behaviors
+
+### Titles
+
+Map noisy variants into stable buckets used for allow/block and display consistency (seniority + role family where possible). Exact maps live in the normalizer — extend there, not in scrapers.
 
 ### Skills
 
-Merge scraper skills + extracted tokens → `SKILL_MAP` aliases (`nodejs`→`Node.js`, `postgres`→`PostgreSQL`) → case-insensitive dedupe.
+1. Merge scraper-provided skills + tokens extracted from description/title.  
+2. Apply `SKILL_MAP` aliases (`nodejs` → `Node.js`, `postgres` → `PostgreSQL`, …).  
+3. Case-insensitive dedupe.  
+4. Persist as `skills[]` on the Job.
 
-### Location tokens
+### Location / remote
 
-Worldwide / USA / UK / EU Remote when detected; empty → Worldwide Remote.
+Detect Worldwide / USA / UK / EU remote signals when present. Empty remote signal often becomes a safe default such as **Worldwide Remote** so downstream filters have something to read. `isRemote` stays true for this product’s thesis.
 
-### Quality filter (post-normalize)
+## Deduplication (immediately after normalize)
 
-Separate module `job-quality.js`:
+Owner: `utils/deduplicate.js` (+ `similarity.js`).
 
-- Allow software/engineer/developer/fullstack/…  
-- Block principal/staff/director/manager/intern/…  
-- Reject onsite-only / must-relocate  
-- Rank +100 for auto-submit ATS URLs  
+| Pass | Key | Intent |
+| --- | --- | --- |
+| 1 | Normalized apply URL | Same posting, many mirrors |
+| 2 | company + title | Same role, tracking params differ |
+| 3 | Jaccard / similarity vs recent DB | Near-duplicates across sources |
 
-## BDD contracts
+## Quality prefilter
 
-### Scraping
+Owner: `utils/job-quality.js`.
 
-**Scenario: one source fails soft**  
-Given Wellfound lacks Zyte keys  
-When pipeline scrapes  
-Then other sources still contribute  
-And errors land in `RunHistory.errors`  
-And status may be `partial`
+| Check | Effect |
+| --- | --- |
+| Title blocklist | Drop recruiters spam / unrelated roles |
+| Title allow orientation | Prefer engineering-shaped titles for this candidate |
+| Remote sanity | Drop obvious onsite-only noise when detectable |
+| ATS ranking | Prefer Greenhouse/Lever/Ashby URLs when budgeting AI slots |
 
-### Dedup
+**Product rule:** it is better to score 12 great auto-ATS jobs than 40 mediocre aggregates under Hobby cron limits.
 
-**Scenario: same URL once**  
-Given two jobs with identical applyUrl after utm strip  
-When `filterDuplicates` runs  
-Then one remains
+## BDD-style scenarios (product rules)
 
-**Scenario: Jaccard near-dupe**  
-Given same company and description similarity > 0.9  
-When deduping against 30-day DB + batch  
-Then the duplicate is dropped
+### High-fit auto-ATS is preferred
 
-### AI
+**Given** two jobs with similar scores  
+**And** one is Greenhouse and one is a generic board  
+**When** AI budget is tight  
+**Then** quality ranking should prefer the Greenhouse URL for scoring/enqueue  
 
-**Scenario: isolated failure**  
-Given Gemini errors on job A  
-When batch continues  
-Then A scores 0 with failure reason  
-And job B still scores
+### Notify vs apply thresholds differ
 
-**Scenario: cron budget**  
-Given scheduled deadline exceeded  
-Then remaining jobs get budget-exhausted reason and score 0
+**Given** `min_match_score=85` and `apply_min_score=75`  
+**When** a job scores 80  
+**Then** it may enqueue (if ATS/quota allow) but should not enter the top Telegram interrupt list  
 
-### Notify
+### Scrapers never invent apply URLs
 
-**Scenario: threshold**  
-Given `min_match_score=85` and scores 90 and 70  
-When notifying  
-Then only ≥85 un-notified jobs are eligible (top 5)
+**Given** a parser failure  
+**When** the scraper cannot find a real apply link  
+**Then** it returns no job (or invalid rows die at Zod) — never a homepage guess  
 
-### Apply
+### Tailor does not invent employment
 
-**Scenario: prefer auto ATS**  
-Given quota 2 and mixed Greenhouse + Built In eligibles  
-When `apply_prefer_auto_ats=true`  
-Then Greenhouse fills first
+**Given** locked master resume JSON  
+**When** resume tailor runs  
+**Then** it may reorder/emphasize — not fabricate employers or degrees  
 
-**Scenario: unknown ATS**  
-Given worker claims `atsType=unknown`  
-Then status becomes `needs_review`  
-And no fake confirmation is invented
+## How to extend safely
 
-**Scenario: resume integrity**  
-Given locked master resume  
-When tailoring  
-Then no new employers/degrees/metrics are fabricated
+1. New skill alias → `SKILL_MAP` only.  
+2. New junk title pattern → quality blocklist.  
+3. New source quirks → fix in that scraper, then rely on shared normalize.  
+4. Add a BDD scenario here when product behavior changes.
 
-### Scheduler
+## Related
 
-**Scenario: overlap lock**  
-Given `isRunning=true`  
-When another `runPipeline` starts  
-Then it aborts already-running
-
-**Scenario: manual override**  
-Given scheduler disabled  
-When Settings Run now uses `manualOverride=true`  
-Then pipeline executes
+- [Pipeline](/docs/pipeline) — when these stages run  
+- [Domain model](/docs/domain-model) — fields written  
+- [Code construction](/docs/code-construction) — file ownership  

@@ -1,0 +1,203 @@
+export const metadata = {
+  title: "Tech stack & choices · Remotify Docs",
+  description:
+    "Every major Remotify technology: why we use it, alternatives, and how to swap implementations.",
+};
+
+# Tech stack & choices
+
+This page is the decision record for Remotify’s stack: **what we use, why, what else would work, and how to implement a swap** without rewriting the product.
+
+## Layer map
+
+<Figure caption="Six layers from UI to local hands. Swap inside a layer; keep contracts between layers.">
+  <StackLayers />
+</Figure>
+
+## Decision principles
+
+1. **One deployable brain** — Next.js App Router for UI + API + cron avoids a second backend.  
+2. **Contracts over frameworks** — Zod job schema, `AIService` provider, claim/report HTTP.  
+3. **Soft edges** — scrapers return `[]`; settings use JSON bags; unknown ATS → `needs_review`.  
+4. **Hands stay local** — browsers and personal Gmail stay off serverless.  
+5. **Prefer boring tools** that one operator can debug at 2am.
+
+---
+
+## Application runtime
+
+### Next.js 15 (App Router) + React 19
+
+| | |
+| --- | --- |
+| **Where** | `src/app/**`, `next.config.mjs` |
+| **Why** | Single repo for marketing, operator UI, MDX docs, API routes, Vercel cron |
+| **Alternatives** | Remix, Nuxt, separate Express + React SPA, Fastify + HTMX |
+| **Swap path** | Keep `src/services/**` pure; re-home only `src/app` route adapters. Hardest part is cron + serverless constraints |
+
+### JavaScript ESM (not TypeScript)
+
+| | |
+| --- | --- |
+| **Where** | `"type": "module"` in `package.json`, all `src/**` |
+| **Why** | Fast iteration for scrapers/adapters; Prisma + Zod already give shape safety at boundaries |
+| **Alternatives** | TypeScript (`strict`), JSDoc-only, gradual `allowJs` |
+| **Swap path** | Start with `src/services/apply/**` + `scrapers/schema.js` + Prisma-generated types; enable `checkJs` then rename hot paths to `.ts` |
+
+### MDX (`@next/mdx`)
+
+| | |
+| --- | --- |
+| **Where** | `src/app/docs/**/page.mdx`, `src/mdx-components.js` |
+| **Why** | Docs live with the product, responsive, chart components as first-class UI |
+| **Alternatives** | Nextra, Starlight, Mintlify, GitBook, plain Markdown in `/docs` |
+| **Swap path** | Keep MDX content; move to Nextra theme or export to Starlight if you want search-as-a-service |
+
+---
+
+## Data & hosting
+
+### Prisma 6 + Neon PostgreSQL
+
+| | |
+| --- | --- |
+| **Where** | `prisma/schema.prisma`, `src/services/database.js` |
+| **Why** | Durable jobs, settings, apply CRM, run telemetry; Neon pairs cleanly with Vercel |
+| **Alternatives** | Drizzle, Kysely, Supabase client, SQLite (better-sqlite3) for single-box OSS |
+| **Swap path** | Schema is the source of truth — regenerate client; abstract only `prisma` import behind `database.js` (already thin) |
+
+### Vercel Cron
+
+| | |
+| --- | --- |
+| **Where** | `vercel.json` → `/api/cron`; Hobby duration caps in pipeline |
+| **Why** | Zero-ops schedule for brain runs |
+| **Alternatives** | GitHub Actions cron, Railway/Fly cron, system crontab hitting the API |
+| **Swap path** | `POST /api/cron` with `Authorization: Bearer $CRON_SECRET` from any scheduler |
+
+---
+
+## Intelligence
+
+### `@google/genai` — Gemini 2.5 Flash
+
+| | |
+| --- | --- |
+| **Where** | `src/services/ai/gemini.js`, resume `tailor.js` |
+| **Why** | Cheap/fast scoring; good enough for match reasons; already wired |
+| **Alternatives** | OpenAI, Anthropic Claude, local Ollama, rule-only scoring |
+| **Swap path** | Implement `AiProvider.evaluateJob` (see typedef in `src/services/ai/index.js`), pass into `createAIService(provider)`. Do **not** call Gemini from pipeline directly |
+
+```text
+pipeline / ai-batch  →  AIService.evaluateJob()  →  provider (Gemini today)
+```
+
+---
+
+## Ingress (scraping)
+
+### axios + cheerio + Zod
+
+| | |
+| --- | --- |
+| **Where** | `src/scrapers/http.js`, HTML scrapers, `schema.js` |
+| **Why** | Free public APIs + light HTML parse; Zod guarantees Job shape before AI spend |
+| **Alternatives** | undici, node-fetch, Scrapy/Playwright scrape, Browserless |
+| **Swap path** | Keep `JobSchema` as the contract; replace only the `run()` body in a scraper file; register in `registry.js` |
+
+### Zyte Scrapy Cloud (Wellfound only)
+
+| | |
+| --- | --- |
+| **Where** | `src/utils/zyte-cloud.js`, `scrapers/wellfound.js` |
+| **Why** | Wellfound is hostile to naive HTTP; reuse finished spider items |
+| **Alternatives** | Skip Wellfound; Browserbase scrape; official API if offered |
+| **Swap path** | Make Wellfound return `[]` when Zyte env missing (already soft); or replace `fetchZyteItems` |
+
+### Public ATS board APIs
+
+| | |
+| --- | --- |
+| **Where** | `scrapers/ats-boards.js` + `data/target-companies.json` |
+| **Why** | Highest-quality apply URLs for auto-submit ATS |
+| **Alternatives** | Manual URL list, Ashby GraphQL only, company RSS |
+| **Swap path** | Add companies to JSON; keep Greenhouse/Lever/Ashby fetch helpers |
+
+---
+
+## Apply, resume, notify
+
+### Playwright (local worker)
+
+| | |
+| --- | --- |
+| **Where** | `src/workers/apply/**` (devDependency; externalized in Next config) |
+| **Why** | Reliable ATS form automation; headed mode for debugging |
+| **Alternatives** | Puppeteer, Selenium, Browserbase/cloud browsers, official ATS APIs where available |
+| **Swap path** | Keep adapter interface in `adapters/index.js`; swap browser launcher in `run.js` only |
+
+### pdfkit
+
+| | |
+| --- | --- |
+| **Where** | `src/services/resume/pdf.js` |
+| **Why** | ATS-safe Helvetica LETTER PDFs; no fancy layout that parsers choke on |
+| **Alternatives** | `@react-pdf/renderer`, Docx + convert, HTML → Prince |
+| **Swap path** | Keep `generateMasterResumePdf` signature; replace rendering internals |
+
+### Telegram Bot API
+
+| | |
+| --- | --- |
+| **Where** | `src/services/telegram/**`, `notification.js` |
+| **Why** | Operator already lives in chat; documents (PDF/Excel) are first-class |
+| **Alternatives** | Slack, Discord, email-only, mobile push |
+| **Swap path** | Introduce `Notifier` interface mirroring `AIService`; Telegram becomes one provider |
+
+### Nodemailer (Gmail app password)
+
+| | |
+| --- | --- |
+| **Where** | `src/services/apply/email.js` |
+| **Why** | Post-worker digest without a third SaaS |
+| **Alternatives** | Resend, SES, Postmark, skip email and rely on Telegram digest |
+| **Swap path** | Replace send function; keep digest text builders in `queue.js` |
+
+### ExcelJS
+
+| | |
+| --- | --- |
+| **Where** | `export/jobs-excel.js`, apply export |
+| **Why** | `/grab` and `/matches` dumps for human triage |
+| **Alternatives** | CSV, Google Sheets API, Notion sync |
+| **Swap path** | Keep query helpers; change buffer builder |
+
+---
+
+## Operator UI
+
+### Radix Themes + Tabler Icons + Tailwind 4
+
+| | |
+| --- | --- |
+| **Where** | `Providers.js`, dashboard/settings/applications, landing/docs CSS |
+| **Why** | Fast accessible controls for CRM; Tailwind for marketing/docs atmosphere |
+| **Alternatives** | shadcn/ui, Mantine, Chakra, plain CSS modules only |
+| **Swap path** | UI is presentation — services stay unchanged |
+
+---
+
+## How to implement a swap (checklist)
+
+1. **Identify the contract** (Zod schema, `AiProvider`, claim/report JSON, notifier).  
+2. **Add the new implementation beside the old one** (feature flag via Settings or env).  
+3. **Wire through the facade** — never scatter vendor SDKs into `pipeline.js`.  
+4. **Run** `test:scrapers` / `test:pipeline` / `apply:smoke` / dry worker.  
+5. **Document** the choice on this page and in Operations env tables.  
+6. **Remove** the old path only after a week of dual-run confidence.
+
+## Related
+
+- [Architecture](/docs/architecture) — where each layer runs  
+- [Code construction](/docs/code-construction) — file ownership  
+- [Roadmap](/docs/roadmap) — planned swaps (Workday, TS, cloud hands)  

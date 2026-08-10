@@ -1,73 +1,81 @@
 export const metadata = {
-  title: "Pipeline deep dive · Remotify Docs",
-  description: "Minute detail of runPipeline, sources, cron, and failure modes.",
+  title: "Pipeline · Remotify Docs",
+  description:
+    "runPipeline algorithm, cron budgets, scraper registry, and failure taxonomy.",
 };
 
-# Pipeline deep dive
+# Pipeline
 
-Entry: `src/services/pipeline.js` → `runPipeline(manualOverride, options)`.
+Owner: `src/services/pipeline.js` → `runPipeline()`. This is the single orchestration path for cron and manual runs.
 
-<Figure caption="Stage animation tied to owning files.">
+## Visual stages
+
+<Figure caption="Same stage model as Data flow — here with operational detail.">
   <PipelineFlow />
 </Figure>
 
-## Sources (registry order)
+## Algorithm (what actually runs)
 
-| name | Mechanism |
-| --- | --- |
-| `ats-boards` | Public Greenhouse/Lever/Ashby JSON from `data/target-companies.json` |
-| `remotive` | Public API software-dev + title filter |
-| `remoteok` | Public API; skip legal notice row |
-| `himalayas` | Public search API worldwide |
-| `arbeitnow` | Public API; remote + tech filter |
-| `skipthedrive` | Cheerio HTML |
-| `builtin` | JSON/HTML remote eng |
-| `underdog` | Jobs API |
-| `jobgether` | HTML / embedded props |
-| `wellfound` | Zyte Scrapy latest run |
+1. **Gate** — scheduler enabled; refuse if `isRunning` (lock).  
+2. **Open RunHistory** — status `running`.  
+3. **Scrape** — `Promise.allSettled` over `SCRAPER_REGISTRY`.  
+4. **Flatten + normalize** each successful payload.  
+5. **Dedupe** against in-batch + recent DB jobs.  
+6. **Quality prefilter** — drop junk titles / non-remote noise; rank auto-ATS.  
+7. **Cap** — `max_jobs` setting; cron path further limits for duration.  
+8. **Build AI brief** from active `CandidateProfile` (or legacy target string).  
+9. **Score sequentially** via `AIService` / Gemini with delay + time budget.  
+10. **Upsert jobs** by `applyUrl`.  
+11. **Notify** top matches ≥ `min_match_score` (default 85), mark `isNotified`.  
+12. **Enqueue** eligible applies ≥ `apply_min_score` (default 75) if apply enabled.  
+13. **Telegram apply bump + digest text** when queue moves.  
+14. **Run report** to Telegram.  
+15. **Close scheduler** — clear `isRunning`, set next run, finalize RunHistory.
 
-## Exact algorithm
+## Cron budgets (Hobby reality)
 
-1. Abort if scheduler disabled (unless override) or `isRunning`.  
-2. `markSchedulerRunning()` + create `RunHistory(running)`.  
-3. Read `max_jobs`, `min_match_score`, profile brief, Gemini key.  
-4. `Promise.allSettled(SCRAPERS)` — collect jobs, log failures.  
-5. `normalizeJob` each (catch → error log).  
-6. `filterDuplicates`.  
-7. `prefilterJobsForScoring` then `slice(0, maxJobs)`.  
-8. Score via `processJobsWithAI` (cron: delay 400ms, budget 40s, max 12).  
-9. Upsert jobs by `applyUrl`.  
-10. Load top 5 un-notified ≥ `min_match_score` → `sendTopMatches` → mark notified.  
-11. `enqueueEligibleJobs` → optional Telegram queue bump.  
-12. `buildApplyDigestText` → Telegram.  
-13. `sendRunReport` → finalize RunHistory → `markSchedulerIdle`.
+| Knob | Typical cron value | Why |
+| --- | --- | --- |
+| Jobs scored | **12** | Fit under ~60s `maxDuration` |
+| AI wall clock | **~40s** | Leave room for notify/enqueue |
+| Inter-job delay | **~400ms** | Reduce Gemini 429s |
 
-## Cron construction
+Manual / script runs may use higher `max_jobs` from Settings — still sequential AI.
 
-`vercel.json` hits `/api/cron` at UTC `0 2 * * *` and `0 12 * * *` (~08:00 / 18:00 IST).
+## Scraper registry
 
-Route behavior:
+| Name | File | Mechanism |
+| --- | --- | --- |
+| `ats-boards` | `ats-boards.js` | Public Greenhouse/Lever/Ashby from `data/target-companies.json` |
+| `remotive` | `remotive.js` | Remotive API |
+| `remoteok` | `remoteok.js` | RemoteOK API |
+| `himalayas` | `himalayas.js` | Himalayas search API |
+| `arbeitnow` | `arbeitnow.js` | Arbeitnow API |
+| `skipthedrive` | `skipthedrive.js` | cheerio HTML |
+| `builtin` | `builtin.js` | HTML + legacy JSON fallback |
+| `underdog` | `underdog.js` | Underdog API |
+| `jobgether` | `jobgether.js` | cheerio / embedded props |
+| `wellfound` | `wellfound.js` | Zyte Scrapy Cloud items |
 
-- Optional Bearer `CRON_SECRET`  
-- Arms scheduler target hours to 2 & 12  
-- `shouldRunScheduledPipeline` prevents double-run same UTC hour  
-- `maxDuration = 60` for Hobby  
-
-## Offline helpers
-
-| Script | Behavior |
-| --- | --- |
-| `scrape:persist` | Persist without AI (still quality-filtered) |
-| `score:backfill` | Score unscored quality jobs + enqueue |
-| `test:scrapers` | Isolation table |
-| `test:pipeline` | Counts through quality |
+**Management rule:** add a scraper by implementing `run()` → Zod-valid jobs, then append `{ name, label, run }` in `registry.js` only.
 
 ## Failure taxonomy
 
-| Stage | Typical cause | Effect |
+| Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| scrape | block / missing Zyte | partial sources |
-| normalize | bad URL | job dropped |
-| ai | bad key / timeout | score 0 / budget skip |
-| notify | Telegram misconfig | matches stay un-notified |
-| enqueue | quota / disabled | no Application rows |
+| `jobsParsed` high, `jobsProcessed` 0 | Quality filter too strict / no Gemini key | Check Settings + quality allowlist |
+| All sources 0 | Network / blocked HTML | Run `npm run test:scrapers`; check Zyte for Wellfound |
+| Partial status | Some scrapers rejected | Expected; inspect RunHistory `errors` |
+| No Telegram | Missing token/chat | Settings test Telegram |
+| No enqueue | `apply_enabled` false / quota 0 / scores &lt; 75 | Settings + score backfill |
+| Scheduler stuck running | Crash mid-run | Clear `isRunning` in DB/UI |
+
+## Secrets resolution during pipeline
+
+Gemini key prefers **runtime env** (`GEMINI_API_KEY`) then Settings `ai_api_key`, ignoring placeholders like `changeme` / `test-gemini`. Same pattern for Telegram/Zyte elsewhere.
+
+## Related
+
+- [Data flow](/docs/data-flow) — funnel charts  
+- [Normalization & quality](/docs/normalization) — pre-AI rules  
+- [Tech stack](/docs/tech-stack) — Gemini / axios choices  

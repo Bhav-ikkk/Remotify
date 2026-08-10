@@ -1,0 +1,95 @@
+export const metadata = {
+  title: "Domain model · Remotify Docs",
+  description:
+    "Prisma models for Remotify: jobs, profile, applications, settings, scheduler, run history.",
+};
+
+# Domain model
+
+The database is the system of record for leads, matching brain, apply CRM, and run telemetry. Schema source: `prisma/schema.prisma`.
+
+## Entity map
+
+<Figure caption="Seven core models. Application is the queue; Job is the lead; CandidateProfile is the matching brain.">
+  <DomainMap />
+</Figure>
+
+## Job
+
+Stores scraped roles plus AI metadata.
+
+| Field group | Examples | Notes |
+| --- | --- | --- |
+| Identity | `title`, `company`, `applyUrl` | `applyUrl` is **unique** |
+| Remote | `isRemote`, `remoteToken` | e.g. `USA Remote` |
+| Content | `description`, `skills[]` | Post-normalize skills |
+| AI | `aiScore`, `aiMatchedSkills`, `aiMissingSkills`, `aiReason`, `aiRawResponse` | Written by pipeline |
+| Ops | `isNotified`, `sourceWebsite`, `scrapedAt` | Notify once semantics |
+
+**Indexes:** company+title, aiScore, sourceWebsite, scrapedAt.
+
+## CandidateProfile (+ children)
+
+Matching brain and resume facts.
+
+- Parent: `slug`, `fullName`, headline/summary, links, contact  
+- Children: skills, projects, experiences, education, priorities, sources  
+- Seeded via `npm run profile:seed` from `data/` JSON  
+
+Legacy fallback: Settings `target_profile` string if no active profile (`profile.js`).
+
+## Application (CRM / queue)
+
+| Status | Meaning |
+| --- | --- |
+| `queued` | Waiting for worker |
+| `preparing` | Claimed; resume/browser in progress |
+| `submitting` | Adapter actively submitting |
+| `submitted` | Done (worker or `/approve`) |
+| `needs_review` | Human must finish |
+| `failed` | Hard error |
+| `skipped` | Operator skipped |
+
+Also stores `atsType`, scores, resume meta, claim/submit timestamps, error text.
+
+## ApplicationIdentity
+
+Form-fill payload for the worker (name, email, phone, links, work auth answers, etc.). Seeded from master resume JSON when possible.
+
+## Setting
+
+Flexible `key` → JSON `value`. Avoids schema churn for knobs and optional secrets. UI redacts secrets; masked placeholders are not overwritten on save.
+
+## SchedulerConfig
+
+`isEnabled`, `isRunning`, UTC target hours, last/next run markers. Dual with Vercel cron: cron can auto-arm enablement so alerts work without a manual toggle.
+
+## RunHistory
+
+Per-pipeline execution metrics: parsed/deduped/processed/matched counts, errors JSON, notification log, duration, status (`running | success | partial | failed`).
+
+## Relationships (simplified)
+
+```text
+CandidateProfile ── (logical) ──► AI scoring brief
+Job 1──* Application
+ApplicationIdentity ── (payload) ──► worker claim
+Setting / SchedulerConfig ── global singleton-ish rows
+RunHistory ── append-only telemetry
+```
+
+## Migrations
+
+Under `prisma/migrations/`:
+
+- init open-source schema  
+- candidate profile  
+- application CRM  
+
+Use `npm run db:push` for iterative self-host; use migrate deploy in stricter prod if you adopt it.
+
+## Related
+
+- [Data flow](/docs/data-flow) — how rows get written  
+- [Apply & resume](/docs/apply-resume) — Application lifecycle in depth  
+- [Operations](/docs/operations) — Settings keys table  

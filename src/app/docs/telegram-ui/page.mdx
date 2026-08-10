@@ -1,48 +1,111 @@
 export const metadata = {
   title: "Telegram & UI · Remotify Docs",
-  description: "Bot commands and operator web surfaces.",
+  description:
+    "Telegram bot commands, automated pushes, webhook setup, and operator web surfaces.",
 };
 
 # Telegram & UI
 
+Remotify’s day-to-day control plane is **Telegram** plus a small **operator web app** (dashboard, settings, applications).
+
 ## Web surfaces
 
-| URL | Purpose |
+| Route | Role |
 | --- | --- |
 | `/` | Marketing landing |
-| `/docs` | This documentation |
-| `/dashboard` | Runs, matches, scheduler |
-| `/applications` | Apply CRM + KPIs |
-| `/settings` | Secrets, thresholds, run-now |
+| `/docs` | This handbook |
+| `/dashboard` | Run/match overview |
+| `/settings` | Knobs, secrets (redacted), run-now, test Telegram |
+| `/applications` | Apply CRM |
 
-## Telegram commands
+UI stack: Radix Themes + Tabler icons inside `(app)` shell (`AppNav`).
 
-| Command | Behavior |
+**Auth model today:** operator-trusted deployment URL (no end-user login product). Put the app behind your own gate if the URL is public.
+
+## Telegram setup
+
+1. Create bot via BotFather → token  
+2. Set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (env and/or Settings)  
+3. Point webhook at `https://<host>/api/telegram/webhook`  
+4. Optional: `TELEGRAM_WEBHOOK_SECRET` for header verification  
+5. Register commands (`registerBotCommands` / setup API)  
+
+Owner modules: `services/telegram/client.js`, `bot-commands.js`, `app/api/telegram/**`.
+
+## Slash commands (operator)
+
+| Command | What it does | Artifact |
+| --- | --- | --- |
+| `/help` | Lists commands | Text |
+| `/status` | Profile + lead counts snapshot | Text |
+| `/grab` | Excel of apply-open leads (~30d) | `.xlsx` document |
+| `/matches` | Excel of AI-matched leads | `.xlsx` document |
+| `/resume` | ATS PDF tailored to best current match | PDF document |
+| `/apply_status` | Quota + queue snapshot | Text |
+| `/apply_digest` | Submitted / review / skip KPIs | Text |
+| `/approvals` | List `needs_review` applications | Text + ids |
+| `/approve <id>` | Mark review item submitted | Status flip |
+| `/skip <id>` | Skip review item | Status flip |
+
+Commands are registered with Telegram via `setMyCommands` so they appear in the client UI.
+
+## Automated pushes (pipeline / worker)
+
+### Top match alert
+
+- **Trigger:** notify stage after scoring  
+- **Gate:** ≥ `min_match_score` (85), top N (5)  
+- **Payload:** company/title/score/reason + optional tailored PDF  
+- **Side effect:** `Job.isNotified = true`  
+
+### Apply queue bump
+
+- **Trigger:** enqueue added rows  
+- **Payload:** short count / next actions  
+- **Intent:** remind you to run or check the worker  
+
+### Pipeline run report
+
+- **Trigger:** end of `runPipeline`  
+- **Payload:** parsed/deduped/scored/matched/error summary from RunHistory metrics  
+
+### Apply digest
+
+- **Trigger:** after worker batch and/or `/apply_digest`  
+- **Payload:** submitted / needs_review / failed / skipped  
+- **Optional email:** Nodemailer using Gmail app password settings  
+
+## Excel exports
+
+Owner: `services/export/jobs-excel.js`.
+
+| Command | Query intent |
 | --- | --- |
-| `/grab [days]` | Excel all apply-open leads |
-| `/matches [days]` | Excel AI matches |
-| `/resume` | Best-match tailored PDF |
-| `/status` | Profile + leads + apply snapshot |
-| `/apply_status` | Quota / queue / prefer-auto |
-| `/apply_digest` | KPI digest |
-| `/approvals` | needs_review list |
-| `/approve <id>` | Mark submitted |
-| `/skip <id>` | Mark skipped |
-| `/enqueue` | Trigger enqueue |
+| `/grab` | Broad recent apply-open leads for human triage |
+| `/matches` | Restricted to AI-matched / scored subset |
 
-## Automated pushes
+Files are built in-memory with ExcelJS and uploaded through Telegram multipart (`form-data`).
 
-- Top match messages + PDF  
-- Apply queue bump after enqueue  
-- Pipeline run report  
-- Apply digest after pipeline  
+## Approvals race
 
-## UX loop
+Worker and human can both touch `needs_review`:
 
-```text
-Telegram match
-  → PDF / link
-  → local worker drains queue
-  → /approvals leftovers
-  → Applications history
-```
+1. Prefer letting the worker finish auto-ATS first  
+2. Use `/approvals` for Workday/unknown/captcha leftovers  
+3. `/approve` means “I submitted this myself” — keep CRM honest  
+
+## Failure modes
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| Bot silent | Bad token/chat / webhook | Settings → test Telegram; re-set webhook |
+| Commands missing | Not registered | Hit telegram setup / `registerBotCommands` |
+| Excel empty | No jobs in window | Run pipeline; check scrape |
+| PDF error | Missing master resume lock | Add personal JSON or demo flag |
+| Approve no-op | Wrong id / already terminal | `/approvals` refresh |
+
+## Related
+
+- [Operations](/docs/operations) — env keys  
+- [Apply & resume](/docs/apply-resume) — status meanings  
+- [Data flow](/docs/data-flow) — when notifies fire  

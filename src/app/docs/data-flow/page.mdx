@@ -1,83 +1,88 @@
 export const metadata = {
   title: "Data flow · Remotify Docs",
-  description: "Stage-by-stage Remotify data flow with funnel and status charts.",
+  description:
+    "End-to-end Remotify funnel: scrape to enqueue with stage contracts, charts, and score gates.",
 };
 
 # Data flow
 
-## Interactive pipeline stages
+Every Remotify run is a **funnel**: volume enters at scrapers and exits as Telegram alerts + Application queue rows. This page is the stage contract; [Pipeline](/docs/pipeline) covers cron budgets and failure taxonomy.
 
-Click a stage (or watch it cycle) to see which file owns that step.
+## Stage animation
 
-<Figure caption="Orchestrated by src/services/pipeline.js → runPipeline().">
+<Figure caption="Click a stage (or watch it cycle) to see the owning module and intent.">
   <PipelineFlow />
 </Figure>
 
-## Lead volume funnel (illustrative)
+## Illustrative volume funnel
 
-Raw scrape volume collapses before apply. Cron also hard-caps AI scoring.
-
-<Figure caption="Relative proportions — not live DB metrics.">
+<Figure caption="Relative index of how volume shrinks. Not live metrics from your Neon DB.">
   <FunnelBars />
 </Figure>
 
-## Two score gates
-
-Notify and apply are **different thresholds** on purpose: Telegram stays picky; queue can be slightly broader then prefer auto-ATS.
-
-<Figure caption="Defaults: notify 85, apply 75.">
-  <ThresholdCompare />
-</Figure>
-
-## Stage contract
+## Stage contracts
 
 | # | Stage | Input | Output | Owner |
 | --- | --- | --- | --- | --- |
-| 1 | Scrape | HTTP/JSON | Raw jobs | `scrapers/*` |
-| 2 | Normalize | Raw | Zod job | `normalizers/index.js` |
-| 3 | Dedupe | Batch | Unique | `utils/deduplicate.js` |
-| 4 | Quality | Unique | Ranked subset | `utils/job-quality.js` |
-| 5 | Cap | Ranked | ≤ max (cron ≤12) | `pipeline.js` |
-| 6 | AI | Capped + profile brief | Scores | `ai-batch` + Gemini |
-| 7 | Persist | Scored | `jobs` rows | Prisma upsert `applyUrl` |
-| 8 | Notify | ≥ min_match, not notified | Telegram + PDF | `notification.js` |
-| 9 | Enqueue | ≥ apply_min | `applications` | `apply/queue.js` |
-| 10 | Claim | queued | preparing + identity | `/api/apply/claim` |
-| 11 | Apply | Browser | Outcome | worker adapters |
-| 12 | Report | Outcome | Final status | `/api/apply/report` |
+| 1 | Scrape | Registry of sources | Raw job arrays (possibly empty) | `scrapers/registry.js` |
+| 2 | Normalize | Raw jobs | Canonical title/skills/location | `normalizers/index.js` |
+| 3 | Dedupe | Normalized + recent DB | Unique candidates | `utils/deduplicate.js` |
+| 4 | Quality | Deduped jobs | Title/remote/ATS-ranked subset | `utils/job-quality.js` |
+| 5 | Cap | Quality list + settings | ≤ `max_jobs` (cron further caps) | `pipeline.js` |
+| 6 | AI score | Capped jobs + profile brief | score / matched / missing / reason | `ai-batch.js` + Gemini |
+| 7 | Persist | Scored jobs | Upserted `Job` rows | Prisma via pipeline |
+| 8 | Notify | Jobs ≥ notify gate | Telegram (+ PDF), `isNotified` | `notification.js` |
+| 9 | Enqueue | Jobs ≥ apply gate | `Application` queued rows | `apply/queue.js` |
 
-## Application status graph
+## Two score gates (not one)
 
-<Figure caption="Worker and Telegram approvals drive transitions.">
+<Figure caption="Notify is stricter and smaller. Apply enqueue is wider but prefers auto-submit ATS.">
+  <ThresholdCompare />
+</Figure>
+
+| Gate | Default | Setting key | Purpose |
+| --- | --- | --- | --- |
+| Notify | **85** | `min_match_score` | Only interrupt you for excellent fits (top 5) |
+| Apply enqueue | **75** | `apply_min_score` | Fill daily quota with auto-ATS preference |
+
+That is why the funnel chart can show **enqueue &gt; notify**: different thresholds and different selection policies.
+
+## After enqueue — application lifecycle
+
+<Figure caption="Worker claim moves queued → preparing; adapters and Telegram approvals finish the graph.">
   <StatusFlow />
 </Figure>
 
-## Job identity
+Detail lives on [Apply & resume](/docs/apply-resume).
 
-- **Primary unique key:** `applyUrl`  
-- **Dedupe helpers:** normalized URL (strip utm/hash), `company::title`, Jaccard description similarity > 0.9 (same company, 30-day lookback)  
-- **Apply dedupe:** `jobId`, `applyUrl`, `normalizeApplyKey(host+path)`
+## Identity of a job through the funnel
 
-## Profile → score brief
+1. Scraper produces an `applyUrl` (must survive Zod).  
+2. Normalize may rewrite title/skills but **keeps URL identity**.  
+3. Dedupe keys primarily on normalized apply URL, then company+title, then similarity.  
+4. Persist upserts on unique `Job.applyUrl`.  
+5. Application links to `jobId` and stores ATS type from `detectAtsType(applyUrl)`.
 
-```text
-CandidateProfile (+ skills/projects/experience/priorities)
-        │
-        ▼
-buildAiMatchProfile()   // services/profile.js
-        │
-        ▼
-AIService.evaluateJob(job, brief)
-        │
-        ▼
-{ score, matchedSkills, missingSkills, reason }
-```
+## Triggers that start the funnel
 
-## Cron vs manual differences
-
-| | Scheduled | Manual override |
+| Trigger | Path | Notes |
 | --- | --- | --- |
-| Max jobs | min(setting, **12**) | `max_jobs` (default 200) |
-| AI delay | 400ms | 1000ms |
-| AI budget | 40s wall clock | until finished |
-| Scheduler enabled required | yes | no |
+| Vercel cron | `POST /api/cron` | UTC 02:00 & 12:00 typical; Bearer secret |
+| Run now | Settings UI → `/api/settings/run-now` | Manual operator |
+| Scripts | `npm run test:pipeline`, `scrape:persist` | Local debugging |
+
+All should converge on `runPipeline()` so behavior stays single-sourced.
+
+## What you should see after a healthy run
+
+1. `RunHistory` row with counts and `status` success/partial  
+2. New/updated `Job` rows with `aiScore`  
+3. Telegram top matches (if credentials + scores)  
+4. New `Application` rows if apply enabled + quota remaining  
+5. Later: worker claim/report moving statuses  
+
+## Related
+
+- [Pipeline](/docs/pipeline) — exact algorithm + cron caps  
+- [Normalization & quality](/docs/normalization) — title/skill rules  
+- [Domain model](/docs/domain-model) — tables behind the funnel  

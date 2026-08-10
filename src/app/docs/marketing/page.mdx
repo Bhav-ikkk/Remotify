@@ -1,59 +1,80 @@
 export const metadata = {
-  title: "Launch & stars · Remotify Docs",
-  description: "Product Hunt, Hacker News, and GitHub star growth playbook.",
+  title: "Launch & growth · Remotify Docs",
+  description:
+    "Honest growth playbook for Remotify: positioning, channels, launch sequence, and claims that match the product.",
 };
 
-# Launch & GitHub stars
+# Launch & growth
 
-Built for Product Hunt legitimacy and developer star velocity — not vanity spam.
+Distribution playbook that stays honest about what Remotify does. Product truth beats hype — see [Roadmap](/docs/roadmap) for what is not shipped yet.
 
 ## Positioning
 
-| Audience | Line |
+| Audience | Line that matches the code |
 | --- | --- |
-| Engineers | Open-source auto-apply that only hits roles you fit |
-| Self-hosters | Your keys, CRM, local Playwright hands |
-| PH | Quality-gated apply stack vs spray SaaS |
-| HN | Show HN: self-hosted remote job pipeline with ATS autofill |
+| Engineers | Open-source apply loop that only prioritizes roles you fit |
+| Self-hosters | Your keys, Neon CRM, local Playwright hands |
+| Product Hunt | Quality-gated apply stack vs spray SaaS |
+| Hacker News | Show HN: self-hosted remote job pipeline with ATS autofill |
 
-**Say:** fit threshold, ATS-direct, self-host, Telegram, MIT.  
-**Don’t say:** 1000 apps overnight, LinkedIn bots, guaranteed interviews.
+**Say:** fit thresholds, ATS-direct (GH/Lever/Ashby), self-host, Telegram, brain/hands split.  
+**Don’t say:** 1000 apps overnight, LinkedIn bots, Workday auto-submit (not shipped), guaranteed interviews.
 
-## Where stars actually come from (ranked)
+## Channel tiers (stars & users)
 
 ### Tier A
 
-1. **Hacker News — Show HN** (best for OSS)  
-2. **r/selfhosted** + **r/opensource**  
-3. **GitHub Trending** (needs a 48h star spike)
+1. **Hacker News — Show HN** (best for OSS technical credibility)  
+2. **r/selfhosted** + **r/opensource** (operators who will actually deploy)  
+3. **GitHub Trending** (needs a real 48h spike + README clarity)
 
 ### Tier B
 
-- **Product Hunt** — badge + press (Tue–Thu 12:01am PT)  
+- **Product Hunt** — Tue–Thu 12:01am PT; badge + press secondary to HN for this product  
 - Indie Hackers build logs  
-- Dev.to long-form architecture posts  
+- Dev.to / blog posts linking to `/docs/architecture` and `/docs/tech-stack`
 
 ### Tier C
 
 - r/SideProject, careful career subs, X threads, LinkedIn builder story  
 
-## 48-hour ignition
+## 48-hour ignition sequence
 
-1. Polish README + demo GIF  
-2. PH live at 12:01am PT  
-3. Show HN same window  
-4. Stagger Reddit posts  
-5. Reply to every technical comment for 6+ hours  
+1. README + demo GIF that show **score gate → Telegram → worker** (not a fake dashboard)  
+2. Docs live and deep (`/docs`) so commenters self-serve  
+3. Product Hunt live at 12:01am PT if you want the badge  
+4. Show HN in the same window with a technical first comment (architecture)  
+5. Stagger Reddit posts; never crosspost identical walls of text  
+6. Reply to every technical question for 6+ hours  
 
 ## Copy bank
 
-**PH tagline:** Apply with intent, not volume  
+**Tagline:** Apply with intent, not volume.
 
 **Show HN title:**  
 `Show HN: Remotify – self-hosted remote job apply (scrape, score, ATS submit)`
 
-**Maker note:** open-source pipeline; Vercel brain / local hands; no LinkedIn bots; ask for feedback on company boards + Workday later.
+**Maker first comment should include:**
+
+- Vercel/Neon brain + local Playwright hands  
+- Notify gate ~85 vs apply gate ~75  
+- Auto-submit: Greenhouse / Lever / Ashby only today  
+- Explicit non-goals: LinkedIn bots, spray volume  
+- Ask for feedback: company board list + Workday later  
+
+## Claims checklist (before you post)
+
+- [ ] README lists real scrapers in `registry.js`  
+- [ ] Landing does not imply universal ATS coverage  
+- [ ] Docs explain dry-run worker before live submit  
+- [ ] License and secrets guidance are obvious  
 
 ## Ethics guardrail
 
-Remotify wins trust as the **anti-spam** apply tool. Prefer fit gates and review for hard portals. Never sell guaranteed jobs.
+Remotify wins trust as the **anti-spam** apply tool. Prefer fit gates and `needs_review` for hard portals. Never sell guaranteed jobs.
+
+## Related
+
+- [Overview](/docs) — product thesis  
+- [Roadmap](/docs/roadmap) — what to promise next  
+- [Tech stack](/docs/tech-stack) — credibility for HN comments  

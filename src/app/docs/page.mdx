@@ -1,52 +1,71 @@
 export const metadata = {
-  title: "Introduction · Remotify Docs",
-  description: "What Remotify is, how to read these live docs, and the product thesis.",
+  title: "Overview · Remotify Docs",
+  description:
+    "How to read Remotify docs: product thesis, audiences, mental model, and reading paths.",
 };
 
-# Remotify system documentation
+# Remotify documentation
 
-This is the **live** documentation for Remotify — readable in the browser, responsive, and grounded in how the code is actually constructed.
+Remotify is a self-hostable remote-job system that scrapes boards, scores fit against your profile, alerts you on Telegram with tailored ATS resumes, and auto-applies on Greenhouse / Lever / Ashby through a **local Playwright worker**.
 
-**Tagline:** Apply with intent, not volume.
+**Product thesis:** Apply with intent, not volume.
 
-<Callout title="How to use these docs">
-  Start with Architecture and Data flow for diagrams. Use Code construction when you need file-level ownership. Use Operations when you are deploying or debugging.
+<Callout title="What these docs are">
+  This is the live system handbook — architecture, technology decisions, data contracts, code ownership, operations, and the roadmap. Every diagram is grounded in real files under <code>src/</code>.
 </Callout>
 
-## What the product does
+## Who this is for
 
-Remotify is a self-hostable remote-job pipeline that:
+| Audience | Start with | Goal |
+| --- | --- | --- |
+| Operator (you) | [Operations](/docs/operations), [Telegram & UI](/docs/telegram-ui) | Run cron, worker, digests daily |
+| Self-hoster | [Architecture](/docs/architecture), [Tech stack](/docs/tech-stack) | Deploy brain + hands correctly |
+| Contributor | [Code construction](/docs/code-construction), [Domain model](/docs/domain-model) | Extend scrapers/adapters without forks |
+| Product thinker | [Roadmap](/docs/roadmap), [Launch](/docs/marketing) | Decide what to build next |
 
-1. Scrapes boards and public ATS APIs  
-2. Normalizes + deduplicates jobs  
-3. Quality-filters titles before Gemini spend  
-4. Scores fit against your Postgres candidate profile  
-5. Sends Telegram alerts with tailored ATS resume PDFs  
-6. Queues high-fit Greenhouse / Lever / Ashby applications  
-7. Applies via a **local Playwright worker** on your machine  
-8. Tracks every attempt in an Application CRM  
+## Mental model in one picture
 
-## What it deliberately refuses
-
-- LinkedIn / Indeed session bots  
-- Fake-submitting unknown ATS portals  
-- Inventing resume facts during tailor  
-- Running browsers on Vercel Hobby  
-
-## Mental model
-
-<Figure caption="Vercel is the brain. Your PC is the hands.">
+<Figure caption="Brain runs on Vercel/Neon. Hands run on your PC. Queue is the contract between them.">
   <BrainHands />
 </Figure>
 
+- **Brain** decides what is worth applying to (scrape, score, notify, enqueue).
+- **Hands** fill ATS forms with a real browser (Playwright) so Vercel never runs Chromium.
+- **Queue** (`Application` rows + claim/report APIs) is the durable handshake.
+
+## How to read these docs
+
+1. **Architecture** — hosting split, security boundaries, module map.  
+2. **Tech stack & choices** — every major dependency, why it exists, alternatives, swap path.  
+3. **Data flow** — stage-by-stage funnel with charts.  
+4. **Domain model** — Prisma entities and status lifecycles.  
+5. **Pipeline / normalization / apply** — exact algorithms and defaults.  
+6. **Code construction** — file ownership and how to extend safely.  
+7. **Operations** — env, scripts, runbooks.  
+8. **Roadmap** — Now / Next / Later and how to perfect the system.
+
+Use the **grouped sidebar**, **On this page** TOC (desktop), and **Previous / Next** footer to stay oriented.
+
+## What the product deliberately refuses
+
+- LinkedIn / Indeed bot spam and mass spray applications  
+- Inventing resume facts during AI tailor  
+- Running Playwright on serverless (Hobby `maxDuration` + browser weight)  
+- Silent scraper failures that kill the whole run (sources soft-fail to `[]`)
+
+## Canonical entry files
+
+| Concern | File |
+| --- | --- |
+| End-to-end run | `src/services/pipeline.js` → `runPipeline()` |
+| Scraper list | `src/scrapers/registry.js` |
+| AI provider facade | `src/services/ai/index.js` |
+| Apply queue | `src/services/apply/queue.js` |
+| Local worker | `src/workers/apply/run.js` |
+| Schema | `prisma/schema.prisma` |
+
 ## Read next
 
-| Page | Why |
-| --- | --- |
-| [Architecture](/docs/architecture) | Stack, hosting split, module map |
-| [Data flow](/docs/data-flow) | Stage pipeline + funnel chart |
-| [Code construction](/docs/code-construction) | How files own responsibilities |
-| [Normalization & BDD](/docs/normalization) | Rules + Given/When/Then contracts |
-| [Pipeline](/docs/pipeline) | `runPipeline` minute detail |
-| [Apply & resume](/docs/apply-resume) | Queue, ATS, PDF lock |
-| [Operations](/docs/operations) | Env, scripts, runbooks |
+- [Architecture](/docs/architecture) — brain/hands and module ownership  
+- [Tech stack & choices](/docs/tech-stack) — technologies, why, alternatives  
+- [Data flow](/docs/data-flow) — funnel charts and stage contracts  

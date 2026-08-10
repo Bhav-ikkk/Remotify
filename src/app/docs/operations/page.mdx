@@ -1,72 +1,145 @@
 export const metadata = {
   title: "Operations · Remotify Docs",
-  description: "Environment, settings, scripts, runbooks, troubleshooting.",
+  description:
+    "Env vars, settings keys, scripts, deploy checklist, and troubleshooting runbooks for Remotify.",
 };
 
 # Operations
 
-## Environment
+Operator handbook for deploying, configuring, and debugging Remotify.
 
-| Variable | Purpose |
+## Quickstart (first healthy loop)
+
+1. Copy `.env.example` → `.env` / Vercel env  
+2. `npm install`  
+3. `npm run db:push` && `npm run db:generate`  
+4. Add `data/master-resume.personal.json` + profile seed (`profile:seed`)  
+5. Configure Telegram; test from Settings  
+6. `npm run test:scrapers` then Settings **Run now** (or `test:pipeline`)  
+7. `APPLY_DRY_RUN=1 npm run apply:worker` against your API base  
+8. Schedule worker; flip dry-run off when smoke is green  
+
+## Environment variables
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | yes | Neon/Postgres connection |
+| `GEMINI_API_KEY` | yes (for AI) | Scoring + light tailor |
+| `TELEGRAM_BOT_TOKEN` | for alerts | Bot API |
+| `TELEGRAM_CHAT_ID` | for alerts | Destination chat |
+| `TELEGRAM_WEBHOOK_SECRET` | recommended | Webhook verification |
+| `NEXT_PUBLIC_APP_URL` | yes in prod | Absolute links / webhook base |
+| `CRON_SECRET` | yes in prod | Protect `/api/cron` |
+| `APPLY_WORKER_SECRET` | yes in prod | Protect claim/report |
+| `APPLY_API_BASE` | worker | Brain URL for hands |
+| `APPLY_DRY_RUN` | worker | `1` safe default |
+| `APPLY_WORKER_MAX` | optional | Claims per process |
+| `APPLY_DELAY_MS` | optional | Pace applies |
+| `APPLY_HEADED` | optional | Visible browser |
+| `ZYTE_API_KEY` / `ZYTE_PROJECT_ID` | Wellfound | Scrapy Cloud pull |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | optional | Email digests |
+| `RESUME_DEMO` / `PROFILE_SEED_DEMO` | optional | Demo data paths |
+
+Placeholders like `changeme` are ignored when resolving secrets.
+
+## Settings keys (DB)
+
+Stored in Prisma `Setting` via `SETTING_KEYS` in `services/settings.js`.
+
+| Key | Type (logical) | Default idea | Read by |
+| --- | --- | --- | --- |
+| `max_jobs` | number | pipeline cap | pipeline |
+| `min_match_score` | number | **85** | notify |
+| `apply_min_score` | number | **75** | enqueue |
+| `daily_apply_quota` | number | **35** | enqueue |
+| `apply_enabled` | boolean | off until ready | enqueue |
+| `apply_prefer_auto_ats` | boolean | true | enqueue |
+| `apply_email_to` | string | digest target | email |
+| `ai_api_key` | secret | fallback to env | AI |
+| `target_profile` | string | legacy brief | profile fallback |
+| Telegram / Zyte / Gmail keys | secrets | mirror env | clients |
+
+UI loads `getAppSettings({ redact: true })`. Saving masked `••••` values does not wipe secrets.
+
+## npm scripts matrix
+
+| Script | When to use |
 | --- | --- |
-| `DATABASE_URL` | Neon |
-| `GEMINI_API_KEY` | Scoring / tailor |
-| `TELEGRAM_BOT_TOKEN` / `CHAT_ID` | Alerts |
-| `TELEGRAM_WEBHOOK_SECRET` | Webhook auth |
-| `NEXT_PUBLIC_APP_URL` | Public URL |
-| `CRON_SECRET` | Protect cron/setup |
-| `APPLY_WORKER_SECRET` | Protect claim/report |
-| `APPLY_API_BASE` | Worker API origin |
-| `APPLY_DRY_RUN` | `1` = no submit |
-| `ZYTE_*` | Wellfound |
-| `GMAIL_*` | Optional mail |
+| `dev` / `build` / `start` | App lifecycle |
+| `db:push` / `db:generate` | Schema sync |
+| `profile:seed` | Load candidate brain |
+| `test:scrapers` | Source health |
+| `test:pipeline` | Full brain path locally |
+| `scrape:persist` | Persist scrape without full notify path experiments |
+| `telegram:cmd` | Exercise bot command helpers |
+| `apply:enqueue` | Manual enqueue |
+| `apply:worker` / `:dry` | Hands loop |
+| `apply:worker:schedule` | OS scheduler helper |
+| `apply:smoke` | Claim handshake test |
+| `apply:digest` | Force digest |
+| `score:backfill` | Score existing jobs |
+| `verify:grab` / `resume:send` | Export / resume checks |
 
-## Settings keys
+## Deploy checklist (Vercel + Neon + PC)
 
-`max_jobs`, `min_match_score` (85), `apply_min_score` (75), `daily_apply_quota` (35), `apply_prefer_auto_ats`, Telegram/Zyte/Gmail keys, `ai_api_key`, `target_profile`.
+1. Neon project → `DATABASE_URL`  
+2. Vercel project → all prod env + `vercel.json` cron  
+3. `CRON_SECRET` / `APPLY_WORKER_SECRET` long random  
+4. Set Telegram webhook to production URL  
+5. Confirm `/api/cron` with Bearer from a scratch call  
+6. Point home PC `APPLY_API_BASE` at production  
+7. Task Scheduler → `npm run apply:worker` mornings/evenings  
 
-## Scripts
+Hobby plan: expect **cron AI caps** (see Pipeline). Do not raise scored job counts without raising platform limits.
 
-| Script | Use |
-| --- | --- |
-| `db:push` / `db:generate` | Prisma |
-| `profile:seed` | Seed profile |
-| `test:scrapers` / `test:pipeline` | Smoke |
-| `scrape:persist` | Persist without AI |
-| `score:backfill` | Score backlog |
-| `apply:enqueue` | Fill queue |
-| `apply:worker` / `:dry` / `:schedule` | Hands |
-| `apply:smoke` | ATS detect smoke |
-| `apply:digest` | Send digest |
+## Runbooks
 
-## First-time setup
+### No jobs scraped
 
-1. `.env` from example  
-2. `prisma db push`  
-3. Personal profile + master resume JSON  
-4. `profile:seed`  
-5. Edit `target-companies.json`  
-6. `npm run dev` → Settings → test Telegram  
-7. Run pipeline or persist + backfill  
-8. Dry worker → live worker  
-9. Deploy + webhook setup  
-10. Schedule local worker after cron  
+1. `npm run test:scrapers` — which sources empty?  
+2. HTML sources blocked? check headers in `http.js`  
+3. Wellfound → Zyte credentials  
+4. Inspect RunHistory errors JSON  
 
-## Troubleshooting
+### Jobs scraped, no scores
 
-| Symptom | Check |
-| --- | --- |
-| 0 Wellfound | Zyte keys |
-| AI scores 0 | Gemini key |
-| Empty queue | scores ≥75? already applied? auto-ATS supply? |
-| Claim fails | API up? bearer secret? |
-| Cron silent | enabled? same hour? CRON_SECRET? |
-| No Telegram | token/chatId/webhook |
+1. `GEMINI_API_KEY` present? placeholder ignored?  
+2. Quality filter dropped everything?  
+3. Cron budget hit before scoring? check metrics  
 
-## Data files
+### Scores but no Telegram
 
-| Path | Git |
-| --- | --- |
-| `profile.demo.json` / `master-resume.demo.json` | yes |
-| `*.personal.json` | no |
-| `target-companies.json` | yes |
+1. Settings → test Telegram  
+2. Chat id must be the destination you expect  
+3. Webhook vs polling confusion — this app expects webhook in prod  
+
+### Queue not filling
+
+1. `apply_enabled`  
+2. Quota exhausted for UTC day  
+3. Scores below `apply_min_score`  
+4. Prefer-auto ATS with zero GH/Lever/Ashby URLs  
+
+### Worker claim fails
+
+1. Bearer secret mismatch  
+2. `APPLY_API_BASE` wrong / HTTPS issues  
+3. No `queued` rows — enqueue first  
+
+### Adapter regressions
+
+1. `APPLY_HEADED=1 APPLY_DRY_RUN=1`  
+2. Fix selectors in that ATS adapter only  
+3. `apply:smoke` then one live submit  
+
+### Scheduler stuck `isRunning`
+
+1. Confirm no active cron  
+2. Clear flag via DB or settings tooling  
+3. Re-run; inspect prior RunHistory for crash reason  
+
+## Related
+
+- [Architecture](/docs/architecture) — brain/hands deploy shape  
+- [Pipeline](/docs/pipeline) — cron budgets  
+- [Tech stack](/docs/tech-stack) — vendor swaps  

@@ -1,0 +1,115 @@
+export const metadata = {
+  title: "Roadmap & future · Remotify Docs",
+  description:
+    "Now / Next / Later plans for Remotify and how to harden the system toward perfection.",
+};
+
+# Roadmap & future
+
+This page answers: **where we are, what we build next, and how to make Remotify “perfect” without abandoning the apply-with-intent thesis.**
+
+## Timeline
+
+<Figure caption="Now is shipping. Next removes sharp edges. Later expands platforms carefully.">
+  <RoadmapTimeline />
+</Figure>
+
+## Product north star (do not break)
+
+1. Prefer **high-fit auto-ATS** over spray volume.  
+2. Keep **brain/hands split** until there is a real reason to move browsers to the cloud.  
+3. Never invent resume facts.  
+4. Soft-fail sources; hard-fail only when the operator must act.  
+5. One operator can run the whole loop from Telegram + a scheduled worker.
+
+## Now — what is already solid
+
+| Capability | Evidence in code |
+| --- | --- |
+| Multi-source scrape | `scrapers/registry.js` (APIs + HTML + ATS boards + Zyte) |
+| Quality before AI | `utils/job-quality.js` |
+| Gemini scoring facade | `services/ai/*` + `ai-batch.js` |
+| Telegram + PDF | `notification.js`, `resume/pdf.js` |
+| Apply CRM + worker | `Application` model, `workers/apply/*` |
+| Live docs | `/docs` MDX |
+
+## Next — sharp edges to remove
+
+### 1. Workday adapter
+
+Workday is **detected** in `detectAtsType` but not in `AUTO_SUBMIT_ATS`. Applications become `needs_review`.
+
+**How to implement:** add `adapters/workday.js`, mirror Greenhouse claim→fill→submit, expand `AUTO_SUBMIT_ATS`, smoke test behind `APPLY_DRY_RUN`.
+
+### 2. De-personalize stubs
+
+Hardcoded apply email fallbacks and worker profile slug (`bhavik-joshi`) fight multi-operator use.
+
+**How to implement:** require `ApplicationIdentity` + active `CandidateProfile`; fail closed with a clear Telegram error if missing.
+
+### 3. Claim locks & retries
+
+Today’s queue is Postgres status + worker polling — fine for one hands process.
+
+**How to implement (incremental):** `claimedAt` + lease expiry; requeue stale `preparing`; classify errors (`transient` vs `permanent`) before counting against quota.
+
+**Bigger alternative:** BullMQ/Redis or Inngest — only if you need multi-worker or complex backoff.
+
+### 4. Observability UI
+
+`RunHistory` already stores metrics/errors. Surface them on dashboard with source-level scrape counts and AI budget usage.
+
+### 5. Remove Phase-1 leftovers
+
+`/api/test-db` is labeled temporary. Delete once ops trust Neon connectivity via Settings ping.
+
+## Later — platform bets
+
+| Bet | When it becomes worth it | Approach |
+| --- | --- | --- |
+| TypeScript hot paths | Adapter bugs from untyped HTML selectors | Gradual TS on apply + scrapers |
+| Cloud hands (Browserbase) | You travel / PC off but still want applies | Same claim/report; remote Playwright |
+| Multi-profile | Two candidates on one deploy | Profile slug selector in settings + worker |
+| Slack/Discord notify | Team operators | `Notifier` provider interface |
+| Official ATS APIs | Greenhouse Harvest etc. with API keys | Bypass browser for submit where legal/ToS allow |
+
+## How to move toward “perfect”
+
+Treat perfection as **reliability + clarity**, not feature count.
+
+### Reliability checklist
+
+- [ ] Every scraper documents empty-result meaning  
+- [ ] Cron and manual runs share one `runPipeline` path (already true)  
+- [ ] Worker dry-run is default until smoke passes  
+- [ ] Secrets only via env / Settings; placeholders ignored  
+- [ ] `needs_review` always has a Telegram escape hatch (`/approvals`)  
+
+### Clarity checklist
+
+- [ ] One canonical owner file per concern (see Code construction)  
+- [ ] Settings keys typed in Operations tables  
+- [ ] Roadmap items ship with a docs update on this page  
+- [ ] Marketing claims match actual adapters (no “applies everywhere”)  
+
+### Sequencing rule
+
+Ship in this order unless an incident forces otherwise:
+
+1. Correctness (adapters, identity, locks)  
+2. Observability (RunHistory UI, digests)  
+3. Coverage (Workday, more ATS boards)  
+4. Platform (TS, multi-tenant, cloud hands)
+
+## Explicit non-goals (still)
+
+- LinkedIn Easy Apply bots  
+- Paying for spray volume as a KPI  
+- Rewriting into microservices before single-operator pain is real  
+- Fancy resume designs that break ATS parsers  
+
+## Related
+
+- [Tech stack & choices](/docs/tech-stack) — how to swap vendors  
+- [Apply & resume](/docs/apply-resume) — current ATS boundary  
+- [Launch & growth](/docs/marketing) — distribution without lying about scope  

@@ -1,75 +1,140 @@
 export const metadata = {
   title: "Apply & resume · Remotify Docs",
-  description: "Queue, ATS detection, Playwright worker, and locked resume PDF system.",
+  description:
+    "Enqueue, claim/report, Playwright adapters, ATS detection, and ATS-safe resume PDFs.",
 };
 
 # Apply & resume
 
-## Resume lock
+This is the **hands** path: turn high-fit jobs into Application rows, claim them locally, tailor an ATS PDF, and submit on Greenhouse / Lever / Ashby.
 
-| File | Role |
-| --- | --- |
-| `data/master-resume.personal.json` | Factual lock (gitignored) |
-| `data/master-resume.demo.json` | Public demo |
-| `resume/template.js` | Load + document model |
-| `resume/tailor.js` | Light tailor, no invention |
-| `resume/pdf.js` | PDFKit Helvetica LETTER |
+## Score gates again
 
-PDF sections: Header → Summary → Skills → Experience → Projects → Education → Achievements.
-
-Produced for: Telegram matches, `/resume`, worker uploads.
-
-## Apply config defaults
-
-| Setting | Default |
-| --- | --- |
-| `apply_enabled` | true |
-| `daily_apply_quota` | 35 |
-| `apply_min_score` | 75 |
-| `apply_prefer_auto_ats` | true |
-
-<Figure caption="Notify vs apply gates.">
+<Figure caption="Enqueue uses the wider gate; Telegram interrupt stays strict.">
   <ThresholdCompare />
 </Figure>
 
-## ATS detection
+## Status machine
 
-| Signal | Type | Auto-submit? |
-| --- | --- | --- |
-| greenhouse.io / `gh_jid` | greenhouse | yes |
-| lever.co | lever | yes |
-| ashbyhq.com | ashby | yes |
-| workday hosts | workday | no → review |
-| else | unknown | no → review |
-
-## Enqueue / claim / report
-
-Owned by `services/apply/queue.js`.
-
-- Enqueue pulls scored jobs, skips existing ids/urls/keys, prefers auto ATS.  
-- Claim sets `preparing`, returns `ApplicationIdentity`.  
-- Report accepts `submitted | needs_review | failed | skipped | queued`.  
-
-<Figure caption="Status transitions.">
+<Figure caption="Every transition should be explainable via claim, adapter report, or Telegram approve/skip.">
   <StatusFlow />
 </Figure>
 
-## Worker loop
-
-`src/workers/apply/run.js`:
+## End-to-end sequence
 
 ```text
-claim → generateMasterResumePdf → adapter → report → delay
+pipeline.enqueueEligibleJobs()
+    → Application (queued, atsType, aiScore)
+worker loop
+    → POST /api/apply/claim   (Bearer)
+    → generateMasterResumePdf (Gemini light tailor + pdfkit)
+    → runAtsAdapter (greenhouse | lever | ashby | else needs_review)
+    → POST /api/apply/report
+    → optional nodemailer digest + Excel
+Telegram: /approve /skip /approvals /apply_status /apply_digest /resume
 ```
 
-Env: `APPLY_API_BASE`, `APPLY_DRY_RUN`, `APPLY_DELAY_MS` (150000), `APPLY_WORKER_MAX`, `APPLY_HEADED`.
+## Enqueue policy
 
-Adapters: `greenhouse.js`, `lever.js`, `ashby.js`.
+Owner: `src/services/apply/queue.js`.
 
-## Operator day checklist
+| Rule | Default / behavior |
+| --- | --- |
+| Min score | `apply_min_score` (75) |
+| Daily quota | `daily_apply_quota` (35) UTC day |
+| Prefer auto ATS | `apply_prefer_auto_ats` — Greenhouse/Lever/Ashby first |
+| Dedupe | Skip existing job ids / urls / apply keys |
+| Feature flag | `apply_enabled` must be true |
 
-1. Scores exist ≥ 75 on auto-ATS URLs  
-2. Queue filled (`apply:enqueue` or pipeline)  
-3. API reachable  
-4. Dry worker once, then live  
-5. `/approvals` for leftovers  
+Workday / unknown ATS can still be recorded but land in **needs_review** unless you later expand `AUTO_SUBMIT_ATS`.
+
+## ATS detection
+
+Owner: `src/services/apply/ats.js`.
+
+| Signal | Type |
+| --- | --- |
+| `greenhouse.io`, `gh_jid` | `greenhouse` |
+| `lever.co` | `lever` |
+| `ashbyhq.com` | `ashby` |
+| `myworkdayjobs.com`, `wdN.myworkday…` | `workday` (detect only) |
+| else | `unknown` |
+
+`canAutoSubmit(type)` is the gate adapters must honor.
+
+## Claim / report contract
+
+### Claim `POST /api/apply/claim`
+
+- Auth: `Authorization: Bearer $APPLY_WORKER_SECRET` (or `CRON_SECRET`)  
+- Effect: `queued` → `preparing`  
+- Returns: application row + `ApplicationIdentity` facts for form fill  
+
+### Report `POST /api/apply/report`
+
+- Accepts terminal-ish statuses: `submitted | needs_review | failed | skipped | queued` (and submitting progress as implemented)  
+- Stores error text / timestamps for CRM  
+
+Exact JSON fields evolve in route handlers — treat services as source of truth and keep worker/report in sync.
+
+## Local worker
+
+Owner: `src/workers/apply/run.js`.
+
+| Env | Role |
+| --- | --- |
+| `APPLY_API_BASE` | Brain base URL |
+| `APPLY_WORKER_SECRET` | Bearer |
+| `APPLY_DRY_RUN` | `1` = no real submit |
+| `APPLY_WORKER_MAX` | Max claims per process |
+| `APPLY_DELAY_MS` | Pace between apps (~150s default idea) |
+| `APPLY_HEADED` | Show browser for debug |
+
+Schedule helper: `npm run apply:worker:schedule` (Task Scheduler friendly).
+
+## Adapters
+
+```text
+adapters/index.js     ← dispatch by atsType
+adapters/greenhouse.js
+adapters/lever.js
+adapters/ashby.js
+```
+
+**Construction rule:** selectors and click paths stay inside the adapter. Shared wait/upload helpers can be extracted carefully; never leak Greenhouse DOM assumptions into Lever.
+
+### Failure modes
+
+| Symptom | Likely | Action |
+| --- | --- | --- |
+| Always `needs_review` | Unknown ATS / captcha / login wall | Manual apply + `/approve` |
+| `failed` quickly | Selector drift | Headed dry-run; fix adapter |
+| Claim 401 | Secret mismatch | Align worker env with Vercel |
+| PDF missing | Resume lock file absent | Provide `data/master-resume.personal.json` |
+
+## Resume pipeline
+
+1. **Locked master JSON** — `data/master-resume.personal.json` (gitignored) or demo via `RESUME_DEMO`.  
+2. **Light tailor** — `services/resume/tailor.js` emphasizes relevant skills; **no invented employers**.  
+3. **PDF** — `pdfkit` Helvetica LETTER via `generateMasterResumePdf`.  
+4. **Delivery** — upload to ATS + Telegram `/resume`.  
+
+Deprecated: prefer tailor/template path over legacy `master.js` helpers.
+
+## Identity
+
+`ApplicationIdentity` holds the form facts (name, email, phone, links, work auth). Seed from resume/profile; worker should not hardcode personal emails long-term (see [Roadmap](/docs/roadmap)).
+
+## Operator checklist (first safe apply)
+
+1. `APPLY_DRY_RUN=1` smoke against staging/local  
+2. Confirm claim returns identity  
+3. Watch headed Greenhouse fill  
+4. Flip dry-run off for one job  
+5. Verify Applications CRM + Telegram digest  
+
+## Related
+
+- [Architecture](/docs/architecture) — why hands are local  
+- [Telegram & UI](/docs/telegram-ui) — approvals  
+- [Roadmap](/docs/roadmap) — Workday + lock improvements  

@@ -1,34 +1,36 @@
 export const metadata = {
   title: "Code construction · Remotify Docs",
-  description: "How Remotify code is constructed: file ownership, patterns, and management.",
+  description:
+    "How Remotify code is built and managed: ownership, patterns, and how to extend each layer.",
 };
 
 # Code construction
 
-This page explains **how the codebase is built and managed** — not just what it does.
+This page explains **how the codebase is constructed and managed** — file ownership, recurring patterns, and the rules for adding features without forking the architecture.
 
 ## Construction philosophy
 
-Remotify is intentionally a **single Next.js ESM app** (no TypeScript sources, no microservices). Complexity lives in clear service modules under `src/services/` with thin API/route wrappers.
-
-Patterns you will see repeatedly:
+Remotify is intentionally a **single Next.js ESM app** (no TypeScript sources today, no microservices). Complexity lives in clear modules under `src/services/` with thin route wrappers.
 
 | Pattern | Where | Intent |
 | --- | --- | --- |
 | Registry array | `scrapers/registry.js` | One place to add sources |
 | Zod boundary | `scrapers/schema.js` | Invalid jobs never enter transform |
+| Strategy facade | `services/ai/index.js` | Swap Gemini without touching pipeline |
 | Sequential AI | `utils/ai-batch.js` | Avoid 429 storms |
 | Settings JSON bag | Prisma `Setting` | Avoid schema churn for knobs |
 | Brain/hands split | queue API + worker | Browser work stays local |
 | Soft failure | scrapers return `[]` | One dead source ≠ dead pipeline |
+| Adapter map | `workers/apply/adapters` | ATS-specific selectors isolated |
 
 ## How a feature is added (management rule)
 
 1. **Decide the layer** (scraper / transform / AI / apply / surface).  
 2. **Extend the owning module** — do not invent a parallel path.  
 3. **Keep Prisma changes intentional** — prefer Settings JSON for knobs.  
-4. **Document the behavior** as a BDD scenario if it changes product rules.  
-5. **Expose ops** via script or Telegram only if operators need it daily.
+4. **Document behavior** in these MDX docs (and BDD on Normalization when product rules change).  
+5. **Expose ops** via script or Telegram only if operators need it daily.  
+6. **Smoke** with the smallest script that proves the layer (`test:scrapers`, `apply:smoke`, dry worker).
 
 ## File-level construction map
 
@@ -38,165 +40,122 @@ Patterns you will see repeatedly:
 src/scrapers/
   registry.js       ← ONLY list of { name, label, run }
   schema.js         ← JobSchema / ScraperOutputSchema
-  http.js           ← shared Axios client (browser UA, timeout)
-  ats-boards.js     ← reads data/target-companies.json
-  remotive.js | remoteok.js | himalayas.js | arbeitnow.js
-  skipthedrive.js | builtin.js | underdog.js | jobgether.js | wellfound.js
+  http.js           ← shared axios defaults / headers
+  ats-boards.js     ← public ATS APIs + target-companies.json
+  remotive.js / remoteok.js / himalayas.js / arbeitnow.js / underdog.js
+  skipthedrive.js / builtin.js / jobgether.js  ← cheerio HTML
+  wellfound.js      ← Zyte items
+  test-runner.js    ← npm run test:scrapers
 ```
 
-**Construction detail — ats-boards:** for each company slug, calls the public ATS JSON API, maps fields into JobSchema shape, forces Greenhouse apply URLs onto `boards.greenhouse.io/{slug}/jobs/{id}` so Playwright adapters get a fillable host (company marketing URLs with `gh_jid` still detect as greenhouse, but board URLs are preferred for automation).
+**Do:** keep `run()` pure enough to unit-run.  
+**Don’t:** call Prisma or Gemini from a scraper.
 
-**Construction detail — wellfound:** does not scrape HTML directly in Node; pulls latest Zyte Scrapy Cloud job for spider `wellfound`. Without keys → empty array.
-
-### Transform
+### Transform — normalize, dedupe, quality
 
 ```text
 src/normalizers/index.js
-  TITLE_RULES (ordered buckets)
-  SKILL_MAP (alias → canonical)
-  normalizeJob() → JobSchema.parse()
-
 src/utils/deduplicate.js
-  intra-batch keys + 30d DB lookback + Jaccard
-
+src/utils/similarity.js
 src/utils/job-quality.js
-  allow/block titles, remote filter, qualityRankScore()
+src/utils/ai-batch.js
+src/utils/zyte-cloud.js
 ```
-
-**Why quality is separate from normalize:** normalize must preserve schema validity for everything scrapers emit; quality decides **what deserves Gemini budget**. Mixing them would hide data bugs.
 
 ### Intelligence
 
 ```text
-src/services/profile.js
-  getActiveProfile()
-  buildAiMatchProfile()  ← long text brief for prompts
-
-src/services/ai/
-  index.js     ← AIService facade (strategy)
-  gemini.js    ← GeminiProvider, model gemini-2.5-flash
-
-src/utils/ai-batch.js
-  for job of jobs:
-    if deadline exceeded → score 0 reason budget
-    try evaluateJob catch → score 0 reason failed
-    delay
+src/services/ai/index.js      ← AIService + typedef contract
+src/services/ai/gemini.js     ← concrete provider
+src/services/profile.js       ← buildAiMatchProfile()
+src/services/resume/
+  template.js / tailor.js / pdf.js
+  master.js                   ← deprecated helper path
 ```
-
-**Key resolution order** (`pipeline.resolveGeminiApiKey`): env `GEMINI_API_KEY` first, then Settings `ai_api_key` (ignore placeholders). Score-backfill prefers DB key because local `.env` often holds stale placeholders.
 
 ### Orchestration
 
-`src/services/pipeline.js` is the **spine**. It:
+```text
+src/services/pipeline.js      ← runPipeline()
+src/services/scheduler.js
+src/services/notification.js
+src/services/settings.js      ← SETTING_KEYS + redact/save
+src/services/database.js      ← prisma singleton
+```
 
-1. Locks scheduler (`isRunning`)  
-2. Creates `RunHistory`  
-3. Scrapes with `Promise.allSettled` (isolate failures)  
-4. Normalize → dedupe → quality → cap  
-5. Scores  
-6. Upserts jobs  
-7. Notifies  
-8. Enqueues + digest  
-9. Finalizes history + unlocks scheduler  
-
-Guards: disabled scheduler (unless `manualOverride`), overlap lock, cron time budget.
-
-### Persistence construction
-
-Upserts use `applyUrl` as unique key. Updates refresh content/scores but **do not reset** `isNotified` — intentional anti-spam.
-
-### Apply construction
+### Apply path
 
 ```text
 src/services/apply/
-  ats.js        detectAtsType + AUTO_SUBMIT_ATS
-  identity.js   seed ApplicationIdentity from master resume
-  queue.js      enqueue / claim / report / digests / KPIs
-  auth.js       bearer secret check
-  email.js      needs_review mail
-  export.js     Excel CRM
-
+  queue.js    ← enqueue / claim helpers / digests
+  ats.js      ← detectAtsType + AUTO_SUBMIT_ATS
+  identity.js ← ApplicationIdentity seeding
+  auth.js     ← worker bearer
+  email.js    ← nodemailer digest
+  export.js   ← excel helpers
 src/workers/apply/
   run.js
-  adapters/index.js → greenhouse | lever | ashby
+  adapters/greenhouse.js | lever.js | ashby.js | index.js
 ```
-
-**Enqueue construction minutiae:**
-
-- Quota uses UTC day boundaries (`startOfUtcDay`).  
-- Consuming statuses: submitted / needs_review / failed (today). Queued does not consume until handled.  
-- When `preferAutoAts`, two-pass enqueue: auto ATS first, then others.  
-- `normalizeApplyKey` strips query/hash so syndicated posts collide.
-
-**Claim construction:** prefers queued rows with `atsType in (greenhouse,lever,ashby)` when prefer-auto is on; falls back to any queued.
-
-**Worker construction:** claim → PDF → adapter → report → delay (`APPLY_DELAY_MS` default 150s). Dry-run skips final submit click.
-
-### Resume construction
-
-```text
-data/master-resume.personal.json  (lock)
-src/services/resume/template.js   load + document model
-src/services/resume/tailor.js     Gemini/heuristic, no invent
-src/services/resume/pdf.js        PDFKit LETTER Helvetica
-```
-
-Tailor prompt constraints are coded to refuse fabricated employers/metrics. Heuristic path still only reorders known content.
 
 ### Surfaces
 
 ```text
-Telegram: services/telegram/bot-commands.js
-Web app:  app/(app)/dashboard|settings|applications
-Landing:  app/(marketing)/page.js
-Docs:     app/docs/**/*.mdx   ← you are here
-APIs:     app/api/**
+src/app/(marketing)/     ← landing
+src/app/(app)/           ← dashboard, settings, applications
+src/app/docs/            ← this MDX site
+src/app/api/**           ← HTTP contracts
+src/services/telegram/** ← bot commands + client
+src/scripts/**           ← operator CLIs
 ```
 
-API routes stay thin: parse body, call service, return JSON. Business rules stay in services so scripts (`src/scripts/*`) can reuse them without HTTP.
+## API construction rules
 
-## Domain model management
+| Route family | Auth | Body owner |
+| --- | --- | --- |
+| `/api/cron` | Bearer `CRON_SECRET` | calls `runPipeline` |
+| `/api/settings/**` | operator-trusted deploy | Zod validate knobs |
+| `/api/apply/claim` | worker bearer | returns application + identity |
+| `/api/apply/report` | worker bearer | status machine updates |
+| `/api/telegram/webhook` | optional secret token | bot command dispatch |
 
-Prisma schema is the contract (`prisma/schema.prisma`). Notable choices:
+Routes stay thin: parse → call service → JSON. Business rules do not live in `route.js` files.
 
-- Several “enums” are **strings** (`Application.status`, ATS types) for deploy flexibility.  
-- `Setting.value` is JSON — feature flags without migrations.  
-- `CandidateProfile` children cascade delete.  
-- `Application` unique on both `jobId` and `applyUrl`.
+## Data construction rules
 
-## Script layer
+- **Unique apply URL** is the job identity.  
+- **Application status** is the only apply state machine — don’t invent side tables for “in flight”.  
+- **Settings** for knobs; **env** for deploy secrets (env wins when both exist for Gemini).  
+- **RunHistory** is append-only telemetry — don’t overwrite history rows for new runs.
 
-Scripts under `src/scripts/` are **operator CLIs**, not a second architecture. They import the same services the API uses (`enqueueEligibleJobs`, scrapers registry, etc.).
+## UI construction rules
 
-## Testing construction
+- Marketing `(marketing)` vs app `(app)` route groups keep shells separate.  
+- Docs use MDX + `src/components/docs/*` charts — not screenshots of Notion.  
+- Radix Themes for CRM controls; docs/landing may use bespoke CSS.
 
-| Script | Scope |
+## Testing & verification scripts
+
+| Script | Proves |
 | --- | --- |
-| `test:scrapers` | each registry scraper isolated via `allSettled` |
-| `test:pipeline` | scrape → normalize → quality counts |
-| `apply:smoke` | Stripe board + detect + target companies ingest |
-| `system-health.js` | profile, PDF, sample score, apply CRM |
+| `test:scrapers` | Sources return parseable jobs |
+| `test:pipeline` | Orchestration path locally |
+| `verify:grab` | Excel export path |
+| `apply:smoke` | Worker ↔ API handshake |
+| `apply:worker:dry` | Adapter without submit |
+| `score:backfill` | Score old jobs without full scrape |
 
-There is no heavy Jest suite by design — ops scripts + smoke paths match a solo-operator product.
+## Anti-patterns (reject in review)
 
-## Configuration management
+- Calling `@google/genai` from a scraper or React component  
+- Copy-pasting Greenhouse selectors into Lever adapter  
+- Storing long-term queue state only in memory  
+- Committing `data/*.personal.json`  
+- Adding a second “pipeline2” script that bypasses `runPipeline`  
+- Documenting behavior only in chat — update MDX  
 
-Two stores:
+## Related
 
-1. **Env** — connection strings, deploy secrets, worker runtime  
-2. **Settings table** — tunable product knobs (scores, quota, Telegram tokens)
-
-UI Settings page writes through `saveAppSettings`, which ignores masked placeholders so empty saves do not wipe secrets.
-
-## What “managing everything” means day-to-day
-
-```text
-Cron fills Jobs + maybe Applications
-  → you run worker
-  → Telegram approvals for leftovers
-  → Applications page for history
-  → score:backfill when scrape:persist left null scores
-  → edit target-companies.json to grow auto-ATS supply
-```
-
-That loop is the product operations model encoded by this construction.
+- [Tech stack](/docs/tech-stack) — why these libraries  
+- [Architecture](/docs/architecture) — runtime planes  
+- [Roadmap](/docs/roadmap) — planned construction changes  

@@ -1,60 +1,96 @@
 export const metadata = {
   title: "Architecture · Remotify Docs",
-  description: "Stack, brain/hands split, and module ownership map.",
+  description:
+    "Brain vs hands hosting split, module ownership, failure isolation, and security boundaries.",
 };
 
 # Architecture
 
-## Stack
+Remotify is one **Next.js ESM app** with two runtime planes: a cloud **brain** and a local **hands** worker. Complexity lives in service modules, not microservices.
 
-| Layer | Choice | Why |
-| --- | --- | --- |
-| App | Next.js 15 App Router, JS ESM | One deployable brain |
-| UI | Radix Themes + Tailwind 4 | Operator panels + landing |
-| DB | Neon Postgres + Prisma 6 | Jobs, profile, applications |
-| AI | Gemini `gemini-2.5-flash` | Score + light resume tailor |
-| Notify | Telegram Bot API | Alerts where you already live |
-| PDF | PDFKit | ATS-safe Helvetica PDFs |
-| Worker | Playwright (local) | Real form automation |
-| Optional | Zyte Scrapy Cloud | Wellfound only |
+## Purpose
 
-## Brain vs hands
+Explain where code runs, who owns each stage, how failures are isolated, and which trust boundaries matter when you self-host.
 
-Browsers are not reliable inside Vercel Hobby’s short serverless window. Remotify therefore **queues** on the server and **executes** on your PC.
+## Canonical diagram
 
-<Figure caption="Split responsibility keeps $0 hosting viable.">
+<Figure caption="Cloud brain decides and queues. Local hands claim, generate resume PDFs, and submit ATS forms.">
   <BrainHands />
 </Figure>
 
+## Why this split exists
+
+| Constraint | Consequence |
+| --- | --- |
+| Vercel Hobby ~60s `maxDuration` | Cron AI budget is capped (12 jobs / ~40s / 400ms delay) |
+| Playwright + Chromium are heavy | Never bundle into serverless (`serverExternalPackages`) |
+| ATS sites expect real browsers | Local headed/headless Chromium is more reliable than HTTP-only submit |
+| Operator already has a PC | Hands can schedule via Windows Task Scheduler / cron |
+
+The queue is intentional: the brain can enqueue while your laptop is asleep; the worker catches up later.
+
+## Runtime topology
+
+```text
+Telegram / Cron / Dashboard / Settings
+              │
+              ▼
+     Next.js API + services   ── Prisma ── Neon Postgres
+              │
+              │  Application (queued)
+              ▼
+   Local worker (Playwright)  ── claim / report ── /api/apply/*
+              │
+              ▼
+   Greenhouse / Lever / Ashby (+ needs_review for others)
+```
+
+| Plane | Runs on | Owns |
+| --- | --- | --- |
+| Brain | Vercel (or any Node host) | Scrapers, normalize, AI, notify, enqueue, UI, Telegram webhook |
+| Data | Neon PostgreSQL | Jobs, profile, settings, applications, run history |
+| Hands | Your machine | Claim loop, resume PDF, ATS adapters, Gmail digest |
+
 ## Module ownership map
 
-Every major concern has a single entry file. Prefer extending that file’s contract instead of scattering logic.
-
-<Figure caption="Layered ownership from ingress to surfaces.">
+<Figure caption="Extend the owning module. Do not invent a parallel path.">
   <ModuleMap />
 </Figure>
 
-## Route groups
+## Failure isolation
 
-| Group | URLs | Layout |
+| Layer | Failure mode | System behavior |
 | --- | --- | --- |
-| `(marketing)` | `/` | Full-bleed landing, no app chrome |
-| `(app)` | `/dashboard`, `/settings`, `/applications` | `AppNav` + constrained main |
-| `docs` | `/docs/*` | Docs sidebar shell |
-| `api` | `/api/*` | Machine interfaces |
+| Single scraper | Network / parse error | `Promise.allSettled` → treat as `[]`; other sources continue |
+| Zod validation | Invalid job shape | Drop job before normalize/AI |
+| Gemini | Timeout / 429 | Sequential batch + cron time budget; partial scores OK |
+| Telegram | Token missing | Pipeline may still persist; notify soft-skips |
+| Worker | Adapter error | `report` → `failed` or `needs_review`; quota accounting continues |
+| Scheduler lock | `isRunning` stuck | Ops: clear via settings / DB; cron auto-arms enablement |
 
 ## Security boundaries
 
-- Secrets: env and/or Prisma `settings` — never committed  
-- Cron / worker: Bearer `CRON_SECRET` or `APPLY_WORKER_SECRET`  
-- Personal profile/resume: `data/*.personal.json` gitignored  
-- Telegram: configured chat id; webhook secret optional  
+| Threat | Control | Residual risk |
+| --- | --- | --- |
+| Cron forgery | Bearer `CRON_SECRET` on `/api/cron` | If unset, local-open — set in production |
+| Worker spoofing | Bearer `APPLY_WORKER_SECRET` (or `CRON_SECRET`) on claim/report | Same: unset = open local |
+| Telegram spoof | Optional webhook secret header | Without secret, URL secrecy is the gate |
+| Resume / PII leak | `data/*.personal.json` gitignored; PDF only to you / ATS | Operator machine compromise still exposes files |
+| Settings wipe | Masked UI values skipped on save | Mis-edit of DB JSON still possible — treat settings as privileged |
+| Secret commit | Env + Prisma `Setting`; placeholders ignored (`changeme`, …) | Never put real keys in repo or MDX |
 
-## Design principles encoded in code
+Dashboard/settings are **operator-trusted** today (no end-user auth product). Treat the deployment URL as private or put it behind your own auth edge if public.
 
-1. **Apply is the product** — CRM exists to support apply, not replace it.  
-2. **Quality before volume** — `job-quality` then Gemini.  
-3. **Prefer auto-submit ATS** — protect daily quota.  
-4. **Sequential AI** — `ai-batch` never `Promise.all`s model calls.  
-5. **Fail to review** — unknown ATS → `needs_review`.  
-6. **Locked resume facts** — tailor cannot invent employers.
+## Deploy shape that matches the architecture
+
+1. Neon database + `prisma db push`  
+2. Vercel with env (`DATABASE_URL`, Gemini, Telegram, `CRON_SECRET`, …)  
+3. Telegram webhook → `/api/telegram/webhook`  
+4. Local `.env` with `APPLY_API_BASE` pointing at production (or local)  
+5. `npm run apply:worker` (or scheduled) with `APPLY_DRY_RUN=0` when ready  
+
+## Related
+
+- [Tech stack & choices](/docs/tech-stack) — why each dependency  
+- [Data flow](/docs/data-flow) — stage contracts  
+- [Operations](/docs/operations) — env and runbooks  
