@@ -15,7 +15,9 @@
     "test:scrapers": "node src/scrapers/test-runner.js",
     "test:pipeline": "node src/scripts/test-pipeline.js",
     "verify:grab": "node src/scripts/verify-grab-resume.js",
-    "verify:grab:send": "node src/scripts/verify-grab-resume.js --send"
+    "verify:grab:send": "node src/scripts/verify-grab-resume.js --send",
+    "scrape:persist": "node src/scripts/persist-scrape.js",
+    "telegram:cmd": "node src/scripts/telegram-cmd.js"
   },
   "dependencies": {
     "@google/genai": "^2.15.0",
