@@ -2,9 +2,16 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 const MODEL = "gemini-2.5-flash";
 
-const SYSTEM_INSTRUCTION = `You are a strict, objective technical recruiter.
+const SYSTEM_INSTRUCTION = `You are a strict, objective technical recruiter for remote / product engineering roles.
 Score how well a candidate profile matches a job posting.
-Be conservative: only mark skills as matched when clearly evidenced in the profile.
+
+Scoring guidance:
+- Weight stack fit (Next.js/React/Node/Postgres/AI-in-products) and remote eligibility heavily when the profile lists them as priorities.
+- Treat shipped projects with real users/clients as strong evidence — stronger than buzzwords alone.
+- Penalize hard mismatches: required years far above profile, on-site only when candidate is remote-seeking, unrelated stacks (e.g. pure native mobile / Java-only) when listed under Avoid.
+- Do NOT require FAANG pedigree. Junior/mid full-stack with production ownership can score high when the stack aligns.
+- Be conservative on matchedSkills: only mark skills clearly evidenced in the profile (skills list, projects, or experience).
+- missingSkills should list important job requirements not evidenced — not every optional nice-to-have.
 Return ONLY JSON matching the required schema. Do not invent employer requirements that are not in the job text.`;
 
 const RESPONSE_SCHEMA = {
@@ -96,7 +103,7 @@ export function createGeminiProvider(options = {}) {
 function buildPrompt(job, userProfile) {
   const skills = Array.isArray(job?.skills) ? job.skills.join(", ") : "";
 
-  return `Candidate profile:
+  return `Candidate profile (structured from their personal database — use priorities + project evidence):
 ${String(userProfile || "").trim()}
 
 Job posting:
@@ -107,7 +114,8 @@ Skills: ${skills || "Not listed"}
 Description:
 ${String(job?.description || "").slice(0, 6000)}
 
-Evaluate fit and respond with JSON fields score, matchedSkills, missingSkills, reason.`;
+Evaluate fit for THIS candidate. Prefer roles matching their target roles and high-weight priorities.
+Respond with JSON fields score, matchedSkills, missingSkills, reason.`;
 }
 
 /**
