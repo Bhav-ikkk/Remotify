@@ -100,9 +100,19 @@ export default function ApplicationsPage() {
           />
           <Stat label="Remaining" value={String(summary.remaining)} />
           <Stat label="Queued" value={String(summary.queued)} />
+          <Stat
+            label="Queued auto ATS"
+            value={String(summary.queuedAuto ?? 0)}
+            color="blue"
+          />
           <Stat label="Needs review" value={String(summary.needsReview)} color="amber" />
           <Stat label="Submitted today" value={String(summary.submittedToday)} color="green" />
           <Stat label="Failed today" value={String(summary.failedToday)} color="red" />
+          <Stat
+            label="Submit rate"
+            value={`${summary.responseRate ?? 0}%`}
+            color="teal"
+          />
         </Flex>
       ) : null}
 
@@ -123,6 +133,7 @@ export default function ApplicationsPage() {
         <Text size="2" color="gray">
           Min score {summary?.minScore ?? 75} ·{" "}
           {summary?.enabled ? "apply enabled" : "apply disabled"}
+          {summary?.preferAutoAts !== false ? " · prefer auto ATS" : ""}
         </Text>
       </Flex>
 

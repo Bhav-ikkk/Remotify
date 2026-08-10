@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -7,7 +8,6 @@ import { Badge, Box, Flex, Text } from "@radix-ui/themes";
 import {
   IconLayoutDashboard,
   IconSettings,
-  IconRadar2,
   IconBriefcase,
 } from "@tabler/icons-react";
 
@@ -16,6 +16,8 @@ const NAV = [
   { href: "/applications", label: "Applications", icon: IconBriefcase },
   { href: "/settings", label: "Settings", icon: IconSettings },
 ];
+
+const GITHUB_REPO = "https://github.com/Bhav-ikkk/Remotify";
 
 export default function AppNav() {
   const pathname = usePathname();
@@ -79,12 +81,34 @@ export default function AppNav() {
           style={{ maxWidth: 1120, margin: "0 auto" }}
         >
           <Flex align="center" gap="4" wrap="wrap">
-            <Flex align="center" gap="2">
-              <IconRadar2 size={22} stroke={1.6} />
-              <Text weight="bold" size="4">
+            <Link
+              href="/"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                textDecoration: "none",
+                color: "inherit",
+              }}
+            >
+              <Image
+                src="/remotify-mark.png"
+                alt=""
+                width={28}
+                height={28}
+                style={{ borderRadius: 6 }}
+              />
+              <Text
+                weight="bold"
+                size="4"
+                style={{
+                  fontFamily: "var(--font-display), Syne, sans-serif",
+                  letterSpacing: "-0.03em",
+                }}
+              >
                 Remotify
               </Text>
-            </Flex>
+            </Link>
 
             <Flex gap="1" asChild>
               <nav aria-label="Primary">
@@ -121,13 +145,28 @@ export default function AppNav() {
             </Flex>
           </Flex>
 
-          <Badge
-            color={schedulerActive ? "teal" : "gray"}
-            variant="soft"
-            size="2"
-          >
-            {schedulerLabel}
-          </Badge>
+          <Flex align="center" gap="3">
+            <a
+              href={GITHUB_REPO}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none",
+                color: "var(--gray-11)",
+              }}
+            >
+              GitHub
+            </a>
+            <Badge
+              color={schedulerActive ? "teal" : "gray"}
+              variant="soft"
+              size="2"
+            >
+              {schedulerLabel}
+            </Badge>
+          </Flex>
         </Flex>
       </header>
     </Box>

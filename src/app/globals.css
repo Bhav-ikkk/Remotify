@@ -2,7 +2,15 @@
 @import "tailwindcss";
 
 :root {
-  --remotify-canvas: #f4f7f8;
+  --remotify-ink: #0c1222;
+  --remotify-ink-soft: #243044;
+  --remotify-mist: #e8eef4;
+  --remotify-canvas: #f2f5f8;
+  --remotify-teal: #0f9b8e;
+  --remotify-teal-deep: #0a7a70;
+  --remotify-line: rgba(12, 18, 34, 0.1);
+  --font-display: "Syne", sans-serif;
+  --font-body: "Source Sans 3", sans-serif;
 }
 
 html,
@@ -12,14 +20,19 @@ body {
 
 body {
   margin: 0;
-  background:
-    radial-gradient(1200px 480px at 10% -10%, #d9f3ef 0%, transparent 55%),
-    radial-gradient(900px 420px at 100% 0%, #e7eef5 0%, transparent 50%),
-    var(--remotify-canvas);
-  color: var(--gray-12);
-  font-family: "Segoe UI", "IBM Plex Sans", system-ui, sans-serif;
+  background: var(--remotify-canvas);
+  color: var(--remotify-ink);
+  font-family: var(--font-body), "Segoe UI", sans-serif;
 }
 
 a {
   color: inherit;
+}
+
+/* App shell pages keep soft atmosphere */
+body:has([data-shell="app"]) {
+  background:
+    radial-gradient(1200px 480px at 10% -10%, #d9f3ef 0%, transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, #e7eef5 0%, transparent 50%),
+    var(--remotify-canvas);
 }
