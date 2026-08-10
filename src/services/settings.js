@@ -1,4 +1,4 @@
-import { prisma } from "@/services/database";
+import { prisma } from "./database.js";
 
 /** Operational defaults only — never secrets or credentials. */
 export const SETTING_KEYS = {
