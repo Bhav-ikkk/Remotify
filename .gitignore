@@ -17,6 +17,12 @@ secrets/
 data/profile.personal.json
 data/profile.*.local.json
 !data/profile.demo.json
+data/master-resume.personal.json
+data/Bhavik_Joshi_Resume.pdf
+data/*.personal.*
+!data/master-resume.demo.json
+!data/profile.demo.json
+!data/README.md
 
 # Next.js
 .next/
