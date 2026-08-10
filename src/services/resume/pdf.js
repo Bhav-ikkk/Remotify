@@ -1,28 +1,50 @@
 import PDFDocument from "pdfkit";
-import { buildMasterResume } from "./master.js";
+import { tailorResumeForJob } from "./tailor.js";
 
-const MARGIN = 48;
-const PAGE_WIDTH = 612; // Letter
-const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
+const MARGIN_X = 48;
+const MARGIN_Y = 40;
+const PAGE_WIDTH = 612;
+const PAGE_HEIGHT = 792;
+const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_X * 2;
+
+const FONT = {
+  regular: "Helvetica",
+  bold: "Helvetica-Bold",
+  italic: "Helvetica-Oblique",
+};
+
+const COLOR = {
+  text: "#000000",
+  muted: "#333333",
+  line: "#000000",
+};
 
 /**
- * Generate a clean ATS-friendly resume PDF (classic layout, not "AI brochure").
- * Uses PDFKit — works on Vercel without Chromium.
+ * Generate ATS resume PDF matching the locked master resume layout.
  *
- * @param {object} profile Active CandidateProfile with relations
- * @param {{ job?: object }} [options]
- * @returns {Promise<{ buffer: Buffer, filename: string, resume: object }>}
+ * @param {object} profile
+ * @param {{ job?: object, useAi?: boolean, apiKey?: string }} [options]
  */
 export async function generateMasterResumePdf(profile, options = {}) {
-  const resume = buildMasterResume(profile, options);
+  const resume = await tailorResumeForJob(profile, options.job || null, {
+    useAi: options.useAi !== false,
+    apiKey: options.apiKey,
+  });
+
   const buffer = await renderResumePdf(resume);
-  const slug = String(profile.slug || "resume")
+  const slug = String(profile?.slug || resume.fullName || "resume")
     .replace(/[^a-z0-9-_]/gi, "-")
     .toLowerCase();
-  const company = options.job?.company
-    ? `-${String(options.job.company).replace(/[^a-z0-9]+/gi, "-").slice(0, 24)}`
-    : "";
-  const filename = `${slug}-resume${company}.pdf`.replace(/--+/g, "-");
+
+  let companyBit = "";
+  if (options.job?.company) {
+    companyBit = `-${String(options.job.company)
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 28)}`;
+  }
+
+  const filename = `${slug}-resume${companyBit}.pdf`.replace(/--+/g, "-");
   return { buffer, filename, resume };
 }
 
@@ -34,9 +56,14 @@ function renderResumePdf(resume) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "LETTER",
-      margins: { top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN },
+      margins: {
+        top: MARGIN_Y,
+        bottom: MARGIN_Y,
+        left: MARGIN_X,
+        right: MARGIN_X,
+      },
       info: {
-        Title: `${resume.fullName} — Resume`,
+        Title: `${resume.fullName} - Resume`,
         Author: resume.fullName,
         Creator: "Remotify",
       },
@@ -47,212 +74,178 @@ function renderResumePdf(resume) {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    // --- Header ---
-    doc
-      .font("Times-Bold")
-      .fontSize(18)
-      .fillColor("#111111")
-      .text(resume.fullName, { align: "left" });
+    drawHeader(doc, resume);
 
-    doc
-      .moveDown(0.15)
-      .font("Times-Roman")
-      .fontSize(10)
-      .fillColor("#333333")
-      .text(resume.headline || "", { align: "left" });
+    section(doc, "Professional Summary");
+    paragraph(doc, resume.summary);
 
-    const contactBits = [
-      resume.location,
-      resume.email,
-      ...resume.links.slice(0, 3),
-    ].filter(Boolean);
+    section(doc, "Technical Skills");
+    drawSkills(doc, resume.skillsByCategory || {});
 
-    doc
-      .moveDown(0.2)
-      .fontSize(8.5)
-      .fillColor("#444444")
-      .text(contactBits.join("  ·  "), {
-        align: "left",
-        width: CONTENT_WIDTH,
-      });
-
-    if (resume.tailoredFor?.title) {
-      doc
-        .moveDown(0.25)
-        .font("Times-Italic")
-        .fontSize(8)
-        .fillColor("#555555")
-        .text(
-          `Prepared for: ${resume.tailoredFor.title}${
-            resume.tailoredFor.company ? ` — ${resume.tailoredFor.company}` : ""
-          }`
-        );
-    }
-
-    rule(doc);
-
-    // --- Summary ---
-    sectionTitle(doc, "Summary");
-    doc
-      .font("Times-Roman")
-      .fontSize(9.5)
-      .fillColor("#222222")
-      .text(resume.summary, {
-        align: "left",
-        lineGap: 1.5,
-      });
-
-    // --- Skills ---
-    sectionTitle(doc, "Skills");
-    const skillLine = (resume.skills || []).slice(0, 22).join(" · ");
-    doc
-      .font("Times-Roman")
-      .fontSize(9)
-      .fillColor("#222222")
-      .text(skillLine, { lineGap: 1.2 });
-
-    // --- Experience ---
     if (resume.experiences?.length) {
-      sectionTitle(doc, "Experience");
-      for (const exp of resume.experiences) {
-        ensureSpace(doc, 70);
-        doc
-          .font("Times-Bold")
-          .fontSize(10)
-          .fillColor("#111111")
-          .text(exp.title, { continued: true })
-          .font("Times-Roman")
-          .text(`  —  ${exp.company}`);
-
-        const meta = [exp.tenure, exp.location].filter(Boolean).join(" · ");
-        if (meta) {
-          doc.font("Times-Italic").fontSize(8.5).fillColor("#555555").text(meta);
-        }
-
-        doc.moveDown(0.15);
-        for (const bullet of exp.bullets || []) {
-          bulletLine(doc, bullet);
-        }
-        doc.moveDown(0.35);
-      }
+      section(doc, "Professional Experience");
+      for (const exp of resume.experiences) drawExperience(doc, exp);
     }
 
-    // --- Projects ---
     if (resume.projects?.length) {
-      sectionTitle(doc, "Selected Projects");
-      for (const project of resume.projects) {
-        ensureSpace(doc, 64);
-        doc
-          .font("Times-Bold")
-          .fontSize(10)
-          .fillColor("#111111")
-          .text(project.name);
-
-        if (project.tagline) {
-          doc
-            .font("Times-Italic")
-            .fontSize(8.5)
-            .fillColor("#444444")
-            .text(project.tagline);
-        }
-
-        if (project.impact) {
-          bulletLine(doc, project.impact);
-        }
-        for (const bullet of project.bullets || []) {
-          bulletLine(doc, bullet);
-        }
-        if (project.stack?.length) {
-          doc
-            .font("Times-Roman")
-            .fontSize(8)
-            .fillColor("#555555")
-            .text(`Tech: ${project.stack.join(", ")}`);
-        }
-        doc.moveDown(0.35);
-      }
+      section(doc, "Projects");
+      for (const project of resume.projects) drawProject(doc, project);
     }
 
-    // --- Education ---
     if (resume.education?.length) {
-      sectionTitle(doc, "Education");
-      for (const ed of resume.education) {
-        ensureSpace(doc, 40);
-        doc
-          .font("Times-Bold")
-          .fontSize(10)
-          .fillColor("#111111")
-          .text(ed.degree || "Degree");
-        doc
-          .font("Times-Roman")
-          .fontSize(9)
-          .fillColor("#333333")
-          .text(
-            [ed.institution, ed.years].filter(Boolean).join(" · ")
-          );
-        if (ed.notes) {
-          doc
-            .font("Times-Italic")
-            .fontSize(8)
-            .fillColor("#555555")
-            .text(ed.notes);
-        }
-        doc.moveDown(0.3);
-      }
+      section(doc, "Education");
+      for (const ed of resume.education) drawEducation(doc, ed);
+    }
+
+    if (resume.achievements?.length) {
+      section(doc, "Achievements & Open Source");
+      for (const item of resume.achievements) bullet(doc, item);
     }
 
     doc.end();
   });
 }
 
-function sectionTitle(doc, title) {
-  doc.moveDown(0.55);
-  ensureSpace(doc, 36);
+function drawHeader(doc, resume) {
   doc
-    .font("Times-Bold")
-    .fontSize(10.5)
-    .fillColor("#111111")
-    .text(title.toUpperCase(), { characterSpacing: 0.6 });
-  doc
-    .moveTo(doc.page.margins.left, doc.y + 2)
-    .lineTo(doc.page.width - doc.page.margins.right, doc.y + 2)
-    .strokeColor("#CCCCCC")
-    .lineWidth(0.6)
-    .stroke();
-  doc.moveDown(0.45);
-}
+    .font(FONT.bold)
+    .fontSize(16)
+    .fillColor(COLOR.text)
+    .text(String(resume.fullNameHeader || resume.fullName || "").toUpperCase(), {
+      align: "center",
+      characterSpacing: 1.2,
+    });
 
-function rule(doc) {
+  const c = resume.contact || {};
+  const line1 = [c.location, c.phone, c.email].filter(Boolean).join("  |  ");
+  const line2 = [
+    c.portfolio ? `Portfolio: ${c.portfolio}` : null,
+    c.github ? `GitHub: ${c.github}` : null,
+    c.linkedin ? `LinkedIn: ${c.linkedin}` : null,
+  ]
+    .filter(Boolean)
+    .join("  |  ");
+
+  doc.moveDown(0.25).font(FONT.regular).fontSize(9).fillColor(COLOR.text);
+  if (line1) doc.text(line1, { align: "center" });
+  if (line2) doc.text(line2, { align: "center" });
   doc.moveDown(0.35);
-  doc
-    .moveTo(doc.page.margins.left, doc.y)
-    .lineTo(doc.page.width - doc.page.margins.right, doc.y)
-    .strokeColor("#AAAAAA")
-    .lineWidth(0.8)
-    .stroke();
-  doc.moveDown(0.4);
 }
 
-function bulletLine(doc, text) {
-  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
-  if (!cleaned) return;
+function drawSkills(doc, categories) {
+  for (const [category, names] of Object.entries(categories)) {
+    if (!names?.length) continue;
+    ensureSpace(doc, 18);
+    doc
+      .font(FONT.bold)
+      .fontSize(9.5)
+      .fillColor(COLOR.text)
+      .text(`${category}: `, { continued: true });
+    doc
+      .font(FONT.regular)
+      .text(names.join(", "), { width: CONTENT_WIDTH, lineGap: 1 });
+  }
+}
+
+function drawExperience(doc, exp) {
+  ensureSpace(doc, 54);
+  const left = `${exp.title} — ${exp.company}`;
+  row(doc, left, exp.tenure || "", FONT.bold, 10);
+  if (exp.location) {
+    doc.font(FONT.regular).fontSize(9).fillColor(COLOR.muted).text(exp.location);
+  }
+  doc.moveDown(0.1);
+  for (const b of exp.bullets || []) bullet(doc, b);
+  doc.moveDown(0.22);
+}
+
+function drawProject(doc, project) {
+  ensureSpace(doc, 52);
+  row(doc, project.name || "", project.year || "", FONT.bold, 10);
+  if (project.stack?.length) {
+    doc
+      .font(FONT.regular)
+      .fontSize(9)
+      .fillColor(COLOR.muted)
+      .text(project.stack.join(", "));
+  }
+  doc.moveDown(0.08);
+  for (const b of (project.bullets || []).slice(0, 3)) bullet(doc, b);
+  doc.moveDown(0.22);
+}
+
+function drawEducation(doc, ed) {
   ensureSpace(doc, 28);
-  const x = doc.page.margins.left;
-  const bulletX = x;
-  const textX = x + 12;
-  const y = doc.y;
-  doc.font("Times-Roman").fontSize(9).fillColor("#222222");
-  doc.text("•", bulletX, y, { width: 10, lineBreak: false });
-  doc.text(cleaned, textX, y, {
-    width: CONTENT_WIDTH - 12,
-    lineGap: 1.2,
-  });
+  const left = `${ed.degree}${ed.institution ? ` — ${ed.institution}` : ""}`;
+  row(doc, left, ed.years || "", FONT.regular, 9.5);
   doc.moveDown(0.12);
 }
 
-function ensureSpace(doc, need) {
-  const bottom = doc.page.height - doc.page.margins.bottom;
-  if (doc.y + need > bottom) {
-    doc.addPage();
-  }
+function section(doc, title) {
+  doc.moveDown(0.4);
+  ensureSpace(doc, 26);
+  doc
+    .font(FONT.bold)
+    .fontSize(10.5)
+    .fillColor(COLOR.text)
+    .text(title.toUpperCase(), { characterSpacing: 0.4 });
+  const y = doc.y + 1;
+  doc
+    .moveTo(MARGIN_X, y)
+    .lineTo(PAGE_WIDTH - MARGIN_X, y)
+    .strokeColor(COLOR.line)
+    .lineWidth(1)
+    .stroke();
+  doc.y = y + 6;
 }
+
+function row(doc, left, right, font, size) {
+  const y = doc.y;
+  doc.font(font).fontSize(size).fillColor(COLOR.text);
+  const rightW = right ? doc.widthOfString(right) + 4 : 0;
+  doc.text(left, MARGIN_X, y, {
+    width: Math.max(120, CONTENT_WIDTH - rightW - 6),
+    lineBreak: false,
+  });
+  if (right) {
+    doc
+      .font(FONT.regular)
+      .fontSize(9)
+      .fillColor(COLOR.text)
+      .text(right, MARGIN_X, y, { width: CONTENT_WIDTH, align: "right" });
+  }
+  doc.x = MARGIN_X;
+  doc.y = y + size + 2;
+}
+
+function paragraph(doc, text) {
+  doc
+    .font(FONT.regular)
+    .fontSize(9.5)
+    .fillColor(COLOR.text)
+    .text(String(text || "").trim(), {
+      width: CONTENT_WIDTH,
+      align: "left",
+      lineGap: 1.4,
+    });
+}
+
+function bullet(doc, text) {
+  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+  if (!cleaned) return;
+  ensureSpace(doc, 24);
+  const y = doc.y;
+  doc.font(FONT.regular).fontSize(9.2).fillColor(COLOR.text);
+  doc.text("•", MARGIN_X, y, { width: 10, lineBreak: false });
+  doc.text(cleaned, MARGIN_X + 11, y, {
+    width: CONTENT_WIDTH - 11,
+    lineGap: 1.25,
+  });
+  doc.moveDown(0.06);
+}
+
+function ensureSpace(doc, need) {
+  if (doc.y + need > PAGE_HEIGHT - MARGIN_Y) doc.addPage();
+}
+
+export { tailorResumeForJob } from "./tailor.js";
