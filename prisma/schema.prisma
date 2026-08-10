@@ -41,6 +41,8 @@ model Job {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  applications    Application[]
+
   @@unique([applyUrl])
   @@index([company, title])
   @@index([aiScore])
@@ -249,4 +251,62 @@ model ProfileSource {
 
   @@index([type])
   @@map("profile_sources")
+}
+
+/// Single active pack of applicant facts used by local apply workers.
+model ApplicationIdentity {
+  id                  String   @id @default(cuid())
+  slug                String   @unique @default("default")
+  isActive            Boolean  @default(true)
+  fullName            String
+  email               String
+  phone               String?
+  location            String?
+  linkedinUrl         String?
+  githubUrl           String?
+  portfolioUrl        String?
+  workAuthNotes       String?
+  requiresSponsorship Boolean  @default(false)
+  remoteOk            Boolean  @default(true)
+  relocateOk          Boolean  @default(false)
+  salaryExpectation   String?
+  noticePeriod        String?
+  coverLetterBlurb    String?
+  extraAnswers        Json?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("application_identities")
+}
+
+/// CRM row for every auto-apply attempt (queue + outcomes).
+model Application {
+  id               String    @id @default(cuid())
+  jobId            String
+  job              Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  applyUrl         String
+  atsType          String    @default("unknown")
+  /// queued | preparing | submitting | submitted | needs_review | failed | skipped
+  status           String    @default("queued")
+  aiScore          Float?
+  resumeFileName   String?
+  resumeMeta       Json?
+  formPayload      Json?
+  error            String?
+  confirmationText String?
+  claimedAt        DateTime?
+  submittedAt      DateTime?
+  emailSentAt      DateTime?
+  workerId         String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([jobId])
+  @@unique([applyUrl])
+  @@index([status])
+  @@index([atsType])
+  @@index([submittedAt])
+  @@index([createdAt])
+  @@map("applications")
 }
