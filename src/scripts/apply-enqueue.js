@@ -12,6 +12,7 @@ async function main() {
     [SETTING_KEYS.DAILY_APPLY_QUOTA, 35],
     [SETTING_KEYS.APPLY_MIN_SCORE, 75],
     [SETTING_KEYS.APPLY_ENABLED, true],
+    [SETTING_KEYS.APPLY_PREFER_AUTO_ATS, true],
     [SETTING_KEYS.APPLY_EMAIL_TO, "Bhavikkjoshiii@gmail.com"],
   ];
   for (const [key, value] of defaults) {

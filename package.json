@@ -22,7 +22,11 @@
     "telegram:cmd": "node src/scripts/telegram-cmd.js",
     "apply:enqueue": "node src/scripts/apply-enqueue.js",
     "apply:worker": "node src/workers/apply/run.js",
-    "apply:worker:dry": "node src/workers/apply/run.js --dry-run"
+    "apply:worker:dry": "node src/workers/apply/run.js --dry-run",
+    "apply:worker:schedule": "node src/scripts/apply-worker-schedule.js",
+    "apply:smoke": "node src/scripts/apply-worker-smoke.js",
+    "apply:digest": "node src/scripts/send-apply-digest.js",
+    "score:backfill": "node src/scripts/score-backfill.js"
   },
   "dependencies": {
     "@google/genai": "^2.15.0",

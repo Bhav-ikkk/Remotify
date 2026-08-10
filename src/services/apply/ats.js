@@ -8,13 +8,18 @@ export function detectAtsType(applyUrl) {
   if (!raw) return "unknown";
 
   let host = "";
+  let url = null;
   try {
-    host = new URL(raw).hostname.replace(/^www\./, "");
+    url = new URL(raw);
+    host = url.hostname.replace(/^www\./, "");
   } catch {
     return "unknown";
   }
 
+  // Company-hosted Greenhouse boards often use ?gh_jid= on their careers site
   if (
+    url.searchParams.has("gh_jid") ||
+    /[?&]gh_jid=\d+/.test(raw) ||
     host.includes("greenhouse.io") ||
     host.includes("boards.greenhouse") ||
     host.includes("job-boards.greenhouse")

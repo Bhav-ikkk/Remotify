@@ -14,6 +14,7 @@ export const SETTING_KEYS = {
   APPLY_MIN_SCORE: "apply_min_score",
   APPLY_ENABLED: "apply_enabled",
   APPLY_EMAIL_TO: "apply_email_to",
+  APPLY_PREFER_AUTO_ATS: "apply_prefer_auto_ats",
   GMAIL_USER: "gmail_user",
   GMAIL_APP_PASSWORD: "gmail_app_password",
 };
@@ -139,6 +140,7 @@ export async function getAppSettings({ redact = true } = {}) {
   const applyQuotaRaw = map[SETTING_KEYS.DAILY_APPLY_QUOTA];
   const applyMinRaw = map[SETTING_KEYS.APPLY_MIN_SCORE];
   const applyEnabledRaw = map[SETTING_KEYS.APPLY_ENABLED];
+  const preferAutoRaw = map[SETTING_KEYS.APPLY_PREFER_AUTO_ATS];
   const gmailPass =
     typeof map[SETTING_KEYS.GMAIL_APP_PASSWORD] === "string"
       ? map[SETTING_KEYS.GMAIL_APP_PASSWORD]
@@ -186,6 +188,8 @@ export async function getAppSettings({ redact = true } = {}) {
         typeof applyMinRaw === "number" && Number.isFinite(applyMinRaw)
           ? applyMinRaw
           : 75,
+      preferAutoAts:
+        typeof preferAutoRaw === "boolean" ? preferAutoRaw : true,
       emailTo:
         typeof map[SETTING_KEYS.APPLY_EMAIL_TO] === "string"
           ? map[SETTING_KEYS.APPLY_EMAIL_TO]
@@ -215,6 +219,7 @@ export async function getAppSettings({ redact = true } = {}) {
  *   applyEnabled?: boolean,
  *   dailyApplyQuota?: number,
  *   applyMinScore?: number,
+ *   applyPreferAutoAts?: boolean,
  *   applyEmailTo?: string,
  *   gmailUser?: string,
  *   gmailAppPassword?: string,
@@ -250,6 +255,9 @@ export async function saveAppSettings(payload) {
   }
   if (typeof payload.applyMinScore === "number") {
     updates[SETTING_KEYS.APPLY_MIN_SCORE] = payload.applyMinScore;
+  }
+  if (typeof payload.applyPreferAutoAts === "boolean") {
+    updates[SETTING_KEYS.APPLY_PREFER_AUTO_ATS] = payload.applyPreferAutoAts;
   }
   if (typeof payload.applyEmailTo === "string") {
     updates[SETTING_KEYS.APPLY_EMAIL_TO] = payload.applyEmailTo.trim();

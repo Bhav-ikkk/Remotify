@@ -15,6 +15,7 @@ import {
   listApplications,
   reportApplication,
   enqueueEligibleJobs,
+  buildApplyDigestText,
 } from "../apply/queue.js";
 import { prisma } from "../database.js";
 
@@ -34,6 +35,10 @@ const BOT_COMMANDS = [
   {
     command: "apply_status",
     description: "Auto-apply quota and queue snapshot",
+  },
+  {
+    command: "apply_digest",
+    description: "Daily apply KPI digest (submitted / review / skips)",
   },
   {
     command: "approvals",
@@ -149,6 +154,9 @@ export async function handleTelegramUpdate(update) {
 
     case "apply_status":
       return handleApplyStatus(token, chatId);
+
+    case "apply_digest":
+      return handleApplyDigest(token, chatId);
 
     case "approvals":
       return handleApprovals(token, chatId);
@@ -304,17 +312,25 @@ async function handleApplyStatus(token, chatId) {
     [
       "<b>Auto-apply status</b>",
       `Enabled: <b>${s.enabled ? "yes" : "no"}</b>`,
+      `Prefer auto ATS: <b>${s.preferAutoAts ? "yes" : "no"}</b>`,
       `Quota today: <b>${s.used}/${s.quota}</b> (remaining ${s.remaining})`,
       `Min score: ${s.minScore}`,
-      `Queued: ${s.queued} · In progress: ${s.preparing}`,
+      `Queued: ${s.queued} (auto ATS ${s.queuedAuto}) · In progress: ${s.preparing}`,
       `Submitted today: ${s.submittedToday}`,
       `Needs review: ${s.needsReview}`,
       `Failed today: ${s.failedToday}`,
+      `CRM submit rate: ${s.responseRate}%`,
       "",
-      "Local worker: <code>npm run apply:worker</code>",
+      "Local worker: <code>npm run apply:worker</code> · digest: /apply_digest",
     ].join("\n")
   );
   return { handled: true, command: "apply_status" };
+}
+
+async function handleApplyDigest(token, chatId) {
+  const text = await buildApplyDigestText();
+  await sendText(token, chatId, text);
+  return { handled: true, command: "apply_digest" };
 }
 
 async function handleApprovals(token, chatId) {
@@ -400,6 +416,7 @@ function helpText() {
     "/matches — Excel of <b>AI-matched</b> leads only",
     "/resume — ATS resume PDF tailored to your best current match",
     "/apply_status — auto-apply quota + queue",
+    "/apply_digest — daily apply KPI digest",
     "/approvals — needs_review list",
     "/approve &lt;id&gt; — mark reviewed app as submitted",
     "/skip &lt;id&gt; — skip a reviewed app",

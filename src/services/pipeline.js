@@ -12,22 +12,11 @@ import { processJobsWithAI } from "@/utils/ai-batch.js";
 import { AIService, createGeminiProvider } from "@/services/ai/index.js";
 import { sendTopMatches, sendRunReport } from "@/services/notification";
 import { buildAiMatchProfile } from "@/services/profile";
-import { enqueueEligibleJobs } from "@/services/apply/queue";
+import { enqueueEligibleJobs, buildApplyDigestText } from "@/services/apply/queue";
 import { telegramApi, resolveTelegramCredentials } from "@/services/telegram/client";
 
-import { scrape as scrapeSkipTheDrive } from "@/scrapers/skipthedrive.js";
-import { scrape as scrapeBuiltIn } from "@/scrapers/builtin.js";
-import { scrape as scrapeUnderdog } from "@/scrapers/underdog.js";
-import { scrape as scrapeJobgether } from "@/scrapers/jobgether.js";
-import { scrape as scrapeWellfound } from "@/scrapers/wellfound.js";
-
-const SCRAPERS = [
-  { name: "skipthedrive", run: scrapeSkipTheDrive },
-  { name: "builtin", run: scrapeBuiltIn },
-  { name: "underdog", run: scrapeUnderdog },
-  { name: "jobgether", run: scrapeJobgether },
-  { name: "wellfound", run: scrapeWellfound },
-];
+import { SCRAPERS } from "@/scrapers/registry.js";
+import { prefilterJobsForScoring } from "@/utils/job-quality.js";
 
 /** Keep cron AI scoring inside Vercel Hobby's 60s function limit. */
 const SCHEDULED_MAX_JOBS = 12;
@@ -146,8 +135,9 @@ export async function runPipeline(manualOverride = false, options = {}) {
     const { uniqueJobs, duplicateCount } = await filterDuplicates(normalized);
     jobsDeduplicated = duplicateCount;
 
-    // --- Cap ---
-    const capped = uniqueJobs.slice(0, Math.max(1, maxJobs));
+    // --- Quality prefilter (title / remote / ATS rank) before Gemini ---
+    const qualityFiltered = prefilterJobsForScoring(uniqueJobs);
+    const capped = qualityFiltered.slice(0, Math.max(1, maxJobs));
 
     await patchRun(run.id, {
       jobsDeduplicated,
@@ -156,6 +146,7 @@ export async function runPipeline(manualOverride = false, options = {}) {
       metrics: {
         stage: "deduped",
         unique: uniqueJobs.length,
+        qualityFiltered: qualityFiltered.length,
         capped: capped.length,
         maxJobs,
         scheduled,
@@ -276,14 +267,15 @@ export async function runPipeline(manualOverride = false, options = {}) {
     try {
       const enqueueResult = await enqueueEligibleJobs();
       notificationLog.push({ action: "applyEnqueue", ...enqueueResult });
-      if (enqueueResult.enqueued > 0) {
-        try {
-          const { token, chatId } = await resolveTelegramCredentials();
-          if (token && chatId) {
+      try {
+        const { token, chatId } = await resolveTelegramCredentials();
+        if (token && chatId) {
+          if (enqueueResult.enqueued > 0) {
             await telegramApi(token, "sendMessage", {
               chat_id: chatId,
               text: [
                 `<b>Apply queue</b>: +${enqueueResult.enqueued} jobs`,
+                `Auto ATS: ${enqueueResult.enqueuedAuto ?? 0} · other: ${enqueueResult.enqueuedOther ?? 0}`,
                 `Quota remaining today: ${enqueueResult.remaining}/${enqueueResult.quota}`,
                 `Min score: ${enqueueResult.minScore}`,
                 "",
@@ -293,13 +285,22 @@ export async function runPipeline(manualOverride = false, options = {}) {
               disable_web_page_preview: true,
             });
           }
-        } catch (tgErr) {
-          notificationLog.push({
-            action: "applyEnqueueNotify",
-            message:
-              tgErr instanceof Error ? tgErr.message : String(tgErr),
+          // Daily apply digest (product KPI surface)
+          const digest = await buildApplyDigestText();
+          await telegramApi(token, "sendMessage", {
+            chat_id: chatId,
+            text: digest,
+            parse_mode: "HTML",
+            disable_web_page_preview: true,
           });
+          notificationLog.push({ action: "applyDigest", sent: true });
         }
+      } catch (tgErr) {
+        notificationLog.push({
+          action: "applyEnqueueNotify",
+          message:
+            tgErr instanceof Error ? tgErr.message : String(tgErr),
+        });
       }
     } catch (error) {
       errorLog.push({
