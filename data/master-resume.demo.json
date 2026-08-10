@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "sourceFile": "demo",
+  "lockedAt": "2026-08-10",
+  "fullName": "ALEX RIVERA",
+  "displayName": "Alex Rivera",
+  "headline": "Full-Stack Developer",
+  "contact": {
+    "location": "Remote",
+    "phone": "+1-555-0100",
+    "email": "demo@example.com",
+    "portfolioLabel": "Portfolio",
+    "portfolio": "example.com",
+    "portfolioUrl": "https://example.com",
+    "githubLabel": "GitHub",
+    "github": "example",
+    "githubUrl": "https://github.com/example",
+    "linkedinLabel": "LinkedIn",
+    "linkedin": "example",
+    "linkedinUrl": "https://www.linkedin.com/in/example"
+  },
+  "summary": "Full-stack developer building production web applications with Next.js and PostgreSQL. Demo master resume for open-source Remotify clones — replace with data/master-resume.personal.json locally.",
+  "skills": {
+    "Languages": ["JavaScript/TypeScript", "Python", "SQL"],
+    "Frontend": ["React", "Next.js", "Tailwind CSS"],
+    "Backend": ["Node.js", "PostgreSQL", "Prisma"],
+    "AI / ML": ["LangChain", "LLM APIs"],
+    "Tools": ["Git", "GitHub Actions"]
+  },
+  "experience": [
+    {
+      "title": "Full Stack Developer",
+      "company": "Demo Labs",
+      "tenure": "Jan 2024 – Present",
+      "location": "Remote",
+      "bullets": [
+        "Built full-stack web applications end-to-end with Next.js and PostgreSQL.",
+        "Owned features from schema design through production deploy."
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "Demo SaaS Platform",
+      "year": "2025",
+      "stack": ["Next.js", "PostgreSQL", "Prisma"],
+      "bullets": [
+        "Shipped a multi-tenant dashboard with auth and billing.",
+        "Added AI-assisted content generation for operators."
+      ]
+    }
+  ],
+  "education": [
+    {
+      "degree": "B.Tech, Computer Science",
+      "institution": "Demo Institute of Technology",
+      "years": "Expected 2027"
+    }
+  ],
+  "achievements": [
+    "Active open-source contributor with production-used side projects."
+  ]
+}
