@@ -8,10 +8,12 @@ import {
   IconLayoutDashboard,
   IconSettings,
   IconRadar2,
+  IconBriefcase,
 } from "@tabler/icons-react";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: IconLayoutDashboard },
+  { href: "/applications", label: "Applications", icon: IconBriefcase },
   { href: "/settings", label: "Settings", icon: IconSettings },
 ];
 
