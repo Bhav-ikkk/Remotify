@@ -22,7 +22,7 @@ const BOT_COMMANDS = [
   },
   {
     command: "resume",
-    description: "Send master resume PDF",
+    description: "ATS resume PDF tailored to best current job match",
   },
   {
     command: "help",
@@ -203,7 +203,7 @@ async function handleGrab(token, chatId, mode, args) {
  * @param {string} chatId
  */
 async function handleResume(token, chatId) {
-  await sendText(token, chatId, "📄 Generating master resume PDF…");
+  await sendText(token, chatId, "📄 Generating tailored ATS resume PDF…");
   const profile = await getActiveProfile();
   if (!profile) {
     await sendText(
@@ -214,11 +214,24 @@ async function handleResume(token, chatId) {
     return { handled: true, command: "resume", ok: false };
   }
 
-  const { buffer, filename } = await generateMasterResumePdf(profile);
-  await sendTelegramDocument(token, chatId, buffer, filename, {
-    caption: `Resume — ${profile.fullName}`,
+  // Prefer highest AI-matched job so /resume is useful for applying now
+  const { prisma } = await import("../database.js");
+  const job = await prisma.job.findFirst({
+    where: { aiScore: { gte: 50 }, applyUrl: { not: "" } },
+    orderBy: [{ aiScore: "desc" }, { scrapedAt: "desc" }],
   });
-  return { handled: true, command: "resume", ok: true };
+
+  const { buffer, filename } = await generateMasterResumePdf(profile, {
+    job: job || undefined,
+    useAi: true,
+  });
+
+  const caption = job
+    ? `ATS resume tailored for ${job.title} @ ${job.company}`
+    : `Master ATS resume — ${profile.fullName}`;
+
+  await sendTelegramDocument(token, chatId, buffer, filename, { caption });
+  return { handled: true, command: "resume", ok: true, tailored: Boolean(job) };
 }
 
 /**
@@ -250,11 +263,11 @@ function helpText() {
     "/grab — Excel of <b>all</b> scraped leads with apply links (last 30 days)",
     "/grab 7 — same, last 7 days",
     "/matches — Excel of <b>AI-matched</b> leads only",
-    "/resume — master resume PDF",
+    "/resume — ATS resume PDF tailored to your best current match",
     "/status — profile + lead counts",
     "/help — this message",
     "",
-    "Matched alerts still arrive automatically after each pipeline run.",
+    "Matched alerts send the job + a tailored resume PDF automatically.",
   ].join("\n");
 }
 

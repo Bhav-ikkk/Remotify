@@ -126,7 +126,7 @@ export async function sendTopMatches(jobs) {
             job,
           });
           await sendTelegramDocument(token, chatId, buffer, filename, {
-            caption: `Resume tailored for ${job.title || "role"} @ ${job.company || "company"}`,
+            caption: `ATS resume · ${job.title || "role"} @ ${job.company || "company"}`,
           });
           resumesSent += 1;
         } catch (resumeError) {
