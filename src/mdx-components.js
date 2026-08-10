@@ -6,6 +6,10 @@ import { FunnelBars } from "@/components/docs/FunnelBars";
 import { StatusFlow } from "@/components/docs/StatusFlow";
 import { ModuleMap } from "@/components/docs/ModuleMap";
 import { ThresholdCompare } from "@/components/docs/ThresholdCompare";
+import { StackLayers } from "@/components/docs/StackLayers";
+import { RoadmapTimeline } from "@/components/docs/RoadmapTimeline";
+import { DomainMap } from "@/components/docs/DomainMap";
+import { slugifyHeading } from "@/lib/docs-slug";
 
 /** @type {import('mdx/types').MDXComponents} */
 export function useMDXComponents(components) {
@@ -19,9 +23,18 @@ export function useMDXComponents(components) {
     StatusFlow,
     ModuleMap,
     ThresholdCompare,
-    h1: (props) => <h1 className="docs-h1" {...props} />,
-    h2: (props) => <h2 className="docs-h2" {...props} />,
-    h3: (props) => <h3 className="docs-h3" {...props} />,
+    StackLayers,
+    RoadmapTimeline,
+    DomainMap,
+    h2: (props) => {
+      const id = props.id || slugifyHeading(props.children);
+      return <h2 {...props} className="docs-h2" id={id} />;
+    },
+    h3: (props) => {
+      const id = props.id || slugifyHeading(props.children);
+      return <h3 {...props} className="docs-h3" id={id} />;
+    },
+    h1: (props) => <h1 {...props} className="docs-h1" />,
     p: (props) => <p className="docs-p" {...props} />,
     ul: (props) => <ul className="docs-ul" {...props} />,
     ol: (props) => <ol className="docs-ol" {...props} />,

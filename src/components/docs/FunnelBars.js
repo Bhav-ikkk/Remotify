@@ -27,8 +27,9 @@ export function FunnelBars() {
         </div>
       ))}
       <p className="docs-funnel-note">
-        Relative illustration of how volume shrinks toward apply. Cron caps AI at
-        12 jobs; notify and apply use different score gates.
+        Relative index (not live DB counts). Notify (≥85, top 5) and enqueue (≥75,
+        auto-ATS preferred) are parallel gates after scoring — enqueue can exceed
+        notify because it targets a wider score band and ATS preference.
       </p>
     </div>
   );
