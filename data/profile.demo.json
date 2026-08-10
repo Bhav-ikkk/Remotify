@@ -1,0 +1,161 @@
+{
+  "slug": "demo-candidate",
+  "isActive": true,
+  "fullName": "Alex Rivera",
+  "headline": "Full-Stack Developer · Next.js · AI-assisted products",
+  "summary": "Demo candidate profile for open-source Remotify. Replace with your own data via data/profile.personal.json (gitignored) and npm run profile:seed.",
+  "location": "Remote · Americas / EU-friendly timezone overlap",
+  "email": "demo@example.com",
+  "phone": null,
+  "websiteUrl": "https://example.com",
+  "portfolioUrl": "https://example.com/portfolio",
+  "githubUrl": "https://github.com/example",
+  "linkedinUrl": "https://www.linkedin.com/in/example",
+  "yearsExperience": 2,
+  "availability": "open_to_remote_full_time",
+  "workAuth": ["Remote worldwide eligible (demo)"],
+  "targetRoles": [
+    "Full Stack Developer",
+    "Frontend Engineer (React/Next.js)",
+    "Software Engineer (Node.js)",
+    "AI Product Engineer"
+  ],
+  "targetCompanies": ["Early-stage SaaS", "Developer tools", "EdTech", "Remote-first startups"],
+  "avoidRoles": ["Pure mobile-native only", "Legacy Java-only monolith without web stack"],
+  "priorities": [
+    {
+      "key": "remote_first",
+      "label": "Remote-first roles",
+      "weight": 100,
+      "notes": "Prefer fully remote or async-friendly teams"
+    },
+    {
+      "key": "nextjs_fullstack",
+      "label": "Next.js / React full-stack",
+      "weight": 95,
+      "notes": "Strongest signal — App Router, Postgres, auth, payments"
+    },
+    {
+      "key": "ai_product",
+      "label": "AI features in real products",
+      "weight": 85,
+      "notes": "LLM APIs, agents, practical product integration — not research-only"
+    },
+    {
+      "key": "ownership",
+      "label": "End-to-end ownership",
+      "weight": 80,
+      "notes": "Ship features from UI through DB and deploy"
+    },
+    {
+      "key": "salary_growth",
+      "label": "Growth + fair compensation",
+      "weight": 70,
+      "notes": "Demo priority — tune for your market"
+    }
+  ],
+  "skills": [
+    { "name": "Next.js", "category": "frontend", "proficiency": "expert", "years": 2, "keywords": ["App Router", "Pages Router", "SSR", "PWA"] },
+    { "name": "React", "category": "frontend", "proficiency": "expert", "years": 2, "keywords": ["React 19", "hooks"] },
+    { "name": "JavaScript", "category": "language", "proficiency": "expert", "years": 2, "keywords": ["ESM", "Node"] },
+    { "name": "TypeScript", "category": "language", "proficiency": "intermediate", "years": 1, "keywords": [] },
+    { "name": "Node.js", "category": "backend", "proficiency": "advanced", "years": 2, "keywords": ["Express", "NestJS"] },
+    { "name": "PostgreSQL", "category": "database", "proficiency": "advanced", "years": 2, "keywords": ["Prisma", "pg-promise", "Neon"] },
+    { "name": "Prisma", "category": "database", "proficiency": "advanced", "years": 1, "keywords": [] },
+    { "name": "Tailwind CSS", "category": "frontend", "proficiency": "advanced", "years": 2, "keywords": [] },
+    { "name": "MUI", "category": "frontend", "proficiency": "advanced", "years": 2, "keywords": ["Material UI v6"] },
+    { "name": "Python", "category": "language", "proficiency": "intermediate", "years": 1, "keywords": ["FastAPI"] },
+    { "name": "LangChain", "category": "ai", "proficiency": "intermediate", "years": 1, "keywords": ["agents"] },
+    { "name": "OpenAI / LLM APIs", "category": "ai", "proficiency": "advanced", "years": 1, "keywords": ["DeepSeek", "Gemini"] },
+    { "name": "Redis", "category": "backend", "proficiency": "familiar", "years": 0.5, "keywords": [] },
+    { "name": "Docker", "category": "devops", "proficiency": "familiar", "years": 0.5, "keywords": [] },
+    { "name": "Rust", "category": "language", "proficiency": "familiar", "years": 0.5, "keywords": ["CLI tools"] }
+  ],
+  "projects": [
+    {
+      "slug": "demo-saas",
+      "name": "Demo SaaS Platform",
+      "tagline": "Multi-tenant dashboard with auth, billing, and AI assist",
+      "description": "Open-source demo project representing a production Next.js + Postgres SaaS with role-based access and payments.",
+      "role": "Solo full-stack",
+      "status": "shipped",
+      "featured": true,
+      "impact": "Illustrative — used only for Remotify open-source seeding",
+      "stack": ["Next.js", "PostgreSQL", "Prisma", "Stripe", "Tailwind"],
+      "highlights": [
+        "Auth + RBAC",
+        "Subscription billing",
+        "AI-assisted content generation"
+      ],
+      "liveUrl": "https://example.com",
+      "repoUrl": "https://github.com/example/demo-saas",
+      "sortOrder": 1
+    },
+    {
+      "slug": "demo-agents",
+      "name": "Multi-Agent Workflow Demo",
+      "tagline": "LangChain agents coordinating product tasks",
+      "description": "Demo multi-agent system with FastAPI backend and Next.js frontend.",
+      "role": "Full-stack + AI",
+      "status": "shipped",
+      "featured": true,
+      "impact": "Illustrative demo data",
+      "stack": ["Next.js", "Python", "FastAPI", "LangChain", "Vector DB"],
+      "highlights": ["Agent orchestration", "Vector retrieval", "Actionable insights UI"],
+      "liveUrl": "https://example.com/agents",
+      "repoUrl": null,
+      "sortOrder": 2
+    }
+  ],
+  "experiences": [
+    {
+      "company": "Demo Labs",
+      "title": "Full Stack Developer",
+      "location": "Remote",
+      "employmentType": "full_time",
+      "startDate": "2024-01-01",
+      "endDate": null,
+      "isCurrent": true,
+      "description": "Ship client and internal products with Next.js, Node, and Postgres.",
+      "highlights": [
+        "Owned features end-to-end from UI to database",
+        "Integrated payment and notification providers"
+      ],
+      "stack": ["Next.js", "React", "PostgreSQL", "Node.js"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Demo Institute of Technology",
+      "degree": "B.Tech",
+      "field": "Computer Science",
+      "startYear": 2023,
+      "endYear": 2027,
+      "notes": "Currently pursuing (demo)"
+    }
+  ],
+  "masterResume": {
+    "templateId": "compact-ats-v1",
+    "sections": ["summary", "skills", "experience", "projects", "education"],
+    "defaultTone": "confident_product_engineer",
+    "stretchRules": {
+      "allowed": [
+        "Emphasize adjacent skills evidenced by projects",
+        "Quantify impact with real metrics when available",
+        "Reorder bullets to match job keywords"
+      ],
+      "forbidden": [
+        "Do not invent employers, degrees, or certifications",
+        "Do not claim years of experience beyond profile.yearsExperience + 0.5"
+      ]
+    }
+  },
+  "sources": [
+    {
+      "type": "manual",
+      "url": null,
+      "label": "Open-source demo seed",
+      "scrapedAt": "2026-08-10T00:00:00.000Z"
+    }
+  ]
+}
