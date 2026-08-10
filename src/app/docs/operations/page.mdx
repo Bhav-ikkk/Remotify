@@ -1,0 +1,72 @@
+export const metadata = {
+  title: "Operations · Remotify Docs",
+  description: "Environment, settings, scripts, runbooks, troubleshooting.",
+};
+
+# Operations
+
+## Environment
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Neon |
+| `GEMINI_API_KEY` | Scoring / tailor |
+| `TELEGRAM_BOT_TOKEN` / `CHAT_ID` | Alerts |
+| `TELEGRAM_WEBHOOK_SECRET` | Webhook auth |
+| `NEXT_PUBLIC_APP_URL` | Public URL |
+| `CRON_SECRET` | Protect cron/setup |
+| `APPLY_WORKER_SECRET` | Protect claim/report |
+| `APPLY_API_BASE` | Worker API origin |
+| `APPLY_DRY_RUN` | `1` = no submit |
+| `ZYTE_*` | Wellfound |
+| `GMAIL_*` | Optional mail |
+
+## Settings keys
+
+`max_jobs`, `min_match_score` (85), `apply_min_score` (75), `daily_apply_quota` (35), `apply_prefer_auto_ats`, Telegram/Zyte/Gmail keys, `ai_api_key`, `target_profile`.
+
+## Scripts
+
+| Script | Use |
+| --- | --- |
+| `db:push` / `db:generate` | Prisma |
+| `profile:seed` | Seed profile |
+| `test:scrapers` / `test:pipeline` | Smoke |
+| `scrape:persist` | Persist without AI |
+| `score:backfill` | Score backlog |
+| `apply:enqueue` | Fill queue |
+| `apply:worker` / `:dry` / `:schedule` | Hands |
+| `apply:smoke` | ATS detect smoke |
+| `apply:digest` | Send digest |
+
+## First-time setup
+
+1. `.env` from example  
+2. `prisma db push`  
+3. Personal profile + master resume JSON  
+4. `profile:seed`  
+5. Edit `target-companies.json`  
+6. `npm run dev` → Settings → test Telegram  
+7. Run pipeline or persist + backfill  
+8. Dry worker → live worker  
+9. Deploy + webhook setup  
+10. Schedule local worker after cron  
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| 0 Wellfound | Zyte keys |
+| AI scores 0 | Gemini key |
+| Empty queue | scores ≥75? already applied? auto-ATS supply? |
+| Claim fails | API up? bearer secret? |
+| Cron silent | enabled? same hour? CRON_SECRET? |
+| No Telegram | token/chatId/webhook |
+
+## Data files
+
+| Path | Git |
+| --- | --- |
+| `profile.demo.json` / `master-resume.demo.json` | yes |
+| `*.personal.json` | no |
+| `target-companies.json` | yes |

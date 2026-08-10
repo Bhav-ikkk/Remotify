@@ -1,0 +1,75 @@
+export const metadata = {
+  title: "Apply & resume · Remotify Docs",
+  description: "Queue, ATS detection, Playwright worker, and locked resume PDF system.",
+};
+
+# Apply & resume
+
+## Resume lock
+
+| File | Role |
+| --- | --- |
+| `data/master-resume.personal.json` | Factual lock (gitignored) |
+| `data/master-resume.demo.json` | Public demo |
+| `resume/template.js` | Load + document model |
+| `resume/tailor.js` | Light tailor, no invention |
+| `resume/pdf.js` | PDFKit Helvetica LETTER |
+
+PDF sections: Header → Summary → Skills → Experience → Projects → Education → Achievements.
+
+Produced for: Telegram matches, `/resume`, worker uploads.
+
+## Apply config defaults
+
+| Setting | Default |
+| --- | --- |
+| `apply_enabled` | true |
+| `daily_apply_quota` | 35 |
+| `apply_min_score` | 75 |
+| `apply_prefer_auto_ats` | true |
+
+<Figure caption="Notify vs apply gates.">
+  <ThresholdCompare />
+</Figure>
+
+## ATS detection
+
+| Signal | Type | Auto-submit? |
+| --- | --- | --- |
+| greenhouse.io / `gh_jid` | greenhouse | yes |
+| lever.co | lever | yes |
+| ashbyhq.com | ashby | yes |
+| workday hosts | workday | no → review |
+| else | unknown | no → review |
+
+## Enqueue / claim / report
+
+Owned by `services/apply/queue.js`.
+
+- Enqueue pulls scored jobs, skips existing ids/urls/keys, prefers auto ATS.  
+- Claim sets `preparing`, returns `ApplicationIdentity`.  
+- Report accepts `submitted | needs_review | failed | skipped | queued`.  
+
+<Figure caption="Status transitions.">
+  <StatusFlow />
+</Figure>
+
+## Worker loop
+
+`src/workers/apply/run.js`:
+
+```text
+claim → generateMasterResumePdf → adapter → report → delay
+```
+
+Env: `APPLY_API_BASE`, `APPLY_DRY_RUN`, `APPLY_DELAY_MS` (150000), `APPLY_WORKER_MAX`, `APPLY_HEADED`.
+
+Adapters: `greenhouse.js`, `lever.js`, `ashby.js`.
+
+## Operator day checklist
+
+1. Scores exist ≥ 75 on auto-ATS URLs  
+2. Queue filled (`apply:enqueue` or pipeline)  
+3. API reachable  
+4. Dry worker once, then live  
+5. `/approvals` for leftovers  

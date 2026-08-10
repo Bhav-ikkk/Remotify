@@ -117,6 +117,9 @@ export default function LandingPage() {
           <a className={styles.topLink} href="#self-host">
             Self-host
           </a>
+          <Link className={styles.topLink} href="/docs">
+            Docs
+          </Link>
           <a
             className={styles.topLink}
             href={GITHUB_REPO}

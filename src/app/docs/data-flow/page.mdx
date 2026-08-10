@@ -1,0 +1,83 @@
+export const metadata = {
+  title: "Data flow · Remotify Docs",
+  description: "Stage-by-stage Remotify data flow with funnel and status charts.",
+};
+
+# Data flow
+
+## Interactive pipeline stages
+
+Click a stage (or watch it cycle) to see which file owns that step.
+
+<Figure caption="Orchestrated by src/services/pipeline.js → runPipeline().">
+  <PipelineFlow />
+</Figure>
+
+## Lead volume funnel (illustrative)
+
+Raw scrape volume collapses before apply. Cron also hard-caps AI scoring.
+
+<Figure caption="Relative proportions — not live DB metrics.">
+  <FunnelBars />
+</Figure>
+
+## Two score gates
+
+Notify and apply are **different thresholds** on purpose: Telegram stays picky; queue can be slightly broader then prefer auto-ATS.
+
+<Figure caption="Defaults: notify 85, apply 75.">
+  <ThresholdCompare />
+</Figure>
+
+## Stage contract
+
+| # | Stage | Input | Output | Owner |
+| --- | --- | --- | --- | --- |
+| 1 | Scrape | HTTP/JSON | Raw jobs | `scrapers/*` |
+| 2 | Normalize | Raw | Zod job | `normalizers/index.js` |
+| 3 | Dedupe | Batch | Unique | `utils/deduplicate.js` |
+| 4 | Quality | Unique | Ranked subset | `utils/job-quality.js` |
+| 5 | Cap | Ranked | ≤ max (cron ≤12) | `pipeline.js` |
+| 6 | AI | Capped + profile brief | Scores | `ai-batch` + Gemini |
+| 7 | Persist | Scored | `jobs` rows | Prisma upsert `applyUrl` |
+| 8 | Notify | ≥ min_match, not notified | Telegram + PDF | `notification.js` |
+| 9 | Enqueue | ≥ apply_min | `applications` | `apply/queue.js` |
+| 10 | Claim | queued | preparing + identity | `/api/apply/claim` |
+| 11 | Apply | Browser | Outcome | worker adapters |
+| 12 | Report | Outcome | Final status | `/api/apply/report` |
+
+## Application status graph
+
+<Figure caption="Worker and Telegram approvals drive transitions.">
+  <StatusFlow />
+</Figure>
+
+## Job identity
+
+- **Primary unique key:** `applyUrl`  
+- **Dedupe helpers:** normalized URL (strip utm/hash), `company::title`, Jaccard description similarity > 0.9 (same company, 30-day lookback)  
+- **Apply dedupe:** `jobId`, `applyUrl`, `normalizeApplyKey(host+path)`
+
+## Profile → score brief
+
+```text
+CandidateProfile (+ skills/projects/experience/priorities)
+        │
+        ▼
+buildAiMatchProfile()   // services/profile.js
+        │
+        ▼
+AIService.evaluateJob(job, brief)
+        │
+        ▼
+{ score, matchedSkills, missingSkills, reason }
+```
+
+## Cron vs manual differences
+
+| | Scheduled | Manual override |
+| --- | --- | --- |
+| Max jobs | min(setting, **12**) | `max_jobs` (default 200) |
+| AI delay | 400ms | 1000ms |
+| AI budget | 40s wall clock | until finished |
+| Scheduler enabled required | yes | no |

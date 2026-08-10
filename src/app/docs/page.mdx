@@ -1,0 +1,52 @@
+export const metadata = {
+  title: "Introduction · Remotify Docs",
+  description: "What Remotify is, how to read these live docs, and the product thesis.",
+};
+
+# Remotify system documentation
+
+This is the **live** documentation for Remotify — readable in the browser, responsive, and grounded in how the code is actually constructed.
+
+**Tagline:** Apply with intent, not volume.
+
+<Callout title="How to use these docs">
+  Start with Architecture and Data flow for diagrams. Use Code construction when you need file-level ownership. Use Operations when you are deploying or debugging.
+</Callout>
+
+## What the product does
+
+Remotify is a self-hostable remote-job pipeline that:
+
+1. Scrapes boards and public ATS APIs  
+2. Normalizes + deduplicates jobs  
+3. Quality-filters titles before Gemini spend  
+4. Scores fit against your Postgres candidate profile  
+5. Sends Telegram alerts with tailored ATS resume PDFs  
+6. Queues high-fit Greenhouse / Lever / Ashby applications  
+7. Applies via a **local Playwright worker** on your machine  
+8. Tracks every attempt in an Application CRM  
+
+## What it deliberately refuses
+
+- LinkedIn / Indeed session bots  
+- Fake-submitting unknown ATS portals  
+- Inventing resume facts during tailor  
+- Running browsers on Vercel Hobby  
+
+## Mental model
+
+<Figure caption="Vercel is the brain. Your PC is the hands.">
+  <BrainHands />
+</Figure>
+
+## Read next
+
+| Page | Why |
+| --- | --- |
+| [Architecture](/docs/architecture) | Stack, hosting split, module map |
+| [Data flow](/docs/data-flow) | Stage pipeline + funnel chart |
+| [Code construction](/docs/code-construction) | How files own responsibilities |
+| [Normalization & BDD](/docs/normalization) | Rules + Given/When/Then contracts |
+| [Pipeline](/docs/pipeline) | `runPipeline` minute detail |
+| [Apply & resume](/docs/apply-resume) | Queue, ATS, PDF lock |
+| [Operations](/docs/operations) | Env, scripts, runbooks |

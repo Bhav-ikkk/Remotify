@@ -1,0 +1,48 @@
+export const metadata = {
+  title: "Telegram & UI · Remotify Docs",
+  description: "Bot commands and operator web surfaces.",
+};
+
+# Telegram & UI
+
+## Web surfaces
+
+| URL | Purpose |
+| --- | --- |
+| `/` | Marketing landing |
+| `/docs` | This documentation |
+| `/dashboard` | Runs, matches, scheduler |
+| `/applications` | Apply CRM + KPIs |
+| `/settings` | Secrets, thresholds, run-now |
+
+## Telegram commands
+
+| Command | Behavior |
+| --- | --- |
+| `/grab [days]` | Excel all apply-open leads |
+| `/matches [days]` | Excel AI matches |
+| `/resume` | Best-match tailored PDF |
+| `/status` | Profile + leads + apply snapshot |
+| `/apply_status` | Quota / queue / prefer-auto |
+| `/apply_digest` | KPI digest |
+| `/approvals` | needs_review list |
+| `/approve <id>` | Mark submitted |
+| `/skip <id>` | Mark skipped |
+| `/enqueue` | Trigger enqueue |
+
+## Automated pushes
+
+- Top match messages + PDF  
+- Apply queue bump after enqueue  
+- Pipeline run report  
+- Apply digest after pipeline  
+
+## UX loop
+
+```text
+Telegram match
+  → PDF / link
+  → local worker drains queue
+  → /approvals leftovers
+  → Applications history
+```

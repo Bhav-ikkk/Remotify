@@ -1,0 +1,111 @@
+export const metadata = {
+  title: "Normalization & BDD · Remotify Docs",
+  description: "Normalization rules and Given/When/Then product behaviors.",
+};
+
+# Normalization & BDD
+
+## Normalization
+
+All jobs pass `normalizeJob()` then Zod `JobSchema`.
+
+### Title buckets (first match wins)
+
+| Bucket | Patterns include |
+| --- | --- |
+| Full Stack Engineer | full stack / fullstack |
+| Mobile Engineer | iOS, Android, React Native, Flutter |
+| DevOps Engineer | devops, SRE, platform engineer |
+| Data Engineer | data/ML/AI engineer, data scientist |
+| Frontend Engineer | frontend, UI, React/Vue/Angular developer |
+| Backend Engineer | backend, Node/Java/Python/Go API |
+
+Else: whitespace-collapsed original title.
+
+### Skills
+
+Merge scraper skills + extracted tokens → `SKILL_MAP` aliases (`nodejs`→`Node.js`, `postgres`→`PostgreSQL`) → case-insensitive dedupe.
+
+### Location tokens
+
+Worldwide / USA / UK / EU Remote when detected; empty → Worldwide Remote.
+
+### Quality filter (post-normalize)
+
+Separate module `job-quality.js`:
+
+- Allow software/engineer/developer/fullstack/…  
+- Block principal/staff/director/manager/intern/…  
+- Reject onsite-only / must-relocate  
+- Rank +100 for auto-submit ATS URLs  
+
+## BDD contracts
+
+### Scraping
+
+**Scenario: one source fails soft**  
+Given Wellfound lacks Zyte keys  
+When pipeline scrapes  
+Then other sources still contribute  
+And errors land in `RunHistory.errors`  
+And status may be `partial`
+
+### Dedup
+
+**Scenario: same URL once**  
+Given two jobs with identical applyUrl after utm strip  
+When `filterDuplicates` runs  
+Then one remains
+
+**Scenario: Jaccard near-dupe**  
+Given same company and description similarity > 0.9  
+When deduping against 30-day DB + batch  
+Then the duplicate is dropped
+
+### AI
+
+**Scenario: isolated failure**  
+Given Gemini errors on job A  
+When batch continues  
+Then A scores 0 with failure reason  
+And job B still scores
+
+**Scenario: cron budget**  
+Given scheduled deadline exceeded  
+Then remaining jobs get budget-exhausted reason and score 0
+
+### Notify
+
+**Scenario: threshold**  
+Given `min_match_score=85` and scores 90 and 70  
+When notifying  
+Then only ≥85 un-notified jobs are eligible (top 5)
+
+### Apply
+
+**Scenario: prefer auto ATS**  
+Given quota 2 and mixed Greenhouse + Built In eligibles  
+When `apply_prefer_auto_ats=true`  
+Then Greenhouse fills first
+
+**Scenario: unknown ATS**  
+Given worker claims `atsType=unknown`  
+Then status becomes `needs_review`  
+And no fake confirmation is invented
+
+**Scenario: resume integrity**  
+Given locked master resume  
+When tailoring  
+Then no new employers/degrees/metrics are fabricated
+
+### Scheduler
+
+**Scenario: overlap lock**  
+Given `isRunning=true`  
+When another `runPipeline` starts  
+Then it aborts already-running
+
+**Scenario: manual override**  
+Given scheduler disabled  
+When Settings Run now uses `manualOverride=true`  
+Then pipeline executes

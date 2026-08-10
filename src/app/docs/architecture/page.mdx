@@ -1,0 +1,60 @@
+export const metadata = {
+  title: "Architecture · Remotify Docs",
+  description: "Stack, brain/hands split, and module ownership map.",
+};
+
+# Architecture
+
+## Stack
+
+| Layer | Choice | Why |
+| --- | --- | --- |
+| App | Next.js 15 App Router, JS ESM | One deployable brain |
+| UI | Radix Themes + Tailwind 4 | Operator panels + landing |
+| DB | Neon Postgres + Prisma 6 | Jobs, profile, applications |
+| AI | Gemini `gemini-2.5-flash` | Score + light resume tailor |
+| Notify | Telegram Bot API | Alerts where you already live |
+| PDF | PDFKit | ATS-safe Helvetica PDFs |
+| Worker | Playwright (local) | Real form automation |
+| Optional | Zyte Scrapy Cloud | Wellfound only |
+
+## Brain vs hands
+
+Browsers are not reliable inside Vercel Hobby’s short serverless window. Remotify therefore **queues** on the server and **executes** on your PC.
+
+<Figure caption="Split responsibility keeps $0 hosting viable.">
+  <BrainHands />
+</Figure>
+
+## Module ownership map
+
+Every major concern has a single entry file. Prefer extending that file’s contract instead of scattering logic.
+
+<Figure caption="Layered ownership from ingress to surfaces.">
+  <ModuleMap />
+</Figure>
+
+## Route groups
+
+| Group | URLs | Layout |
+| --- | --- | --- |
+| `(marketing)` | `/` | Full-bleed landing, no app chrome |
+| `(app)` | `/dashboard`, `/settings`, `/applications` | `AppNav` + constrained main |
+| `docs` | `/docs/*` | Docs sidebar shell |
+| `api` | `/api/*` | Machine interfaces |
+
+## Security boundaries
+
+- Secrets: env and/or Prisma `settings` — never committed  
+- Cron / worker: Bearer `CRON_SECRET` or `APPLY_WORKER_SECRET`  
+- Personal profile/resume: `data/*.personal.json` gitignored  
+- Telegram: configured chat id; webhook secret optional  
+
+## Design principles encoded in code
+
+1. **Apply is the product** — CRM exists to support apply, not replace it.  
+2. **Quality before volume** — `job-quality` then Gemini.  
+3. **Prefer auto-submit ATS** — protect daily quota.  
+4. **Sequential AI** — `ai-batch` never `Promise.all`s model calls.  
+5. **Fail to review** — unknown ATS → `needs_review`.  
+6. **Locked resume facts** — tailor cannot invent employers.

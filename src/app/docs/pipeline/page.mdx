@@ -1,0 +1,73 @@
+export const metadata = {
+  title: "Pipeline deep dive · Remotify Docs",
+  description: "Minute detail of runPipeline, sources, cron, and failure modes.",
+};
+
+# Pipeline deep dive
+
+Entry: `src/services/pipeline.js` → `runPipeline(manualOverride, options)`.
+
+<Figure caption="Stage animation tied to owning files.">
+  <PipelineFlow />
+</Figure>
+
+## Sources (registry order)
+
+| name | Mechanism |
+| --- | --- |
+| `ats-boards` | Public Greenhouse/Lever/Ashby JSON from `data/target-companies.json` |
+| `remotive` | Public API software-dev + title filter |
+| `remoteok` | Public API; skip legal notice row |
+| `himalayas` | Public search API worldwide |
+| `arbeitnow` | Public API; remote + tech filter |
+| `skipthedrive` | Cheerio HTML |
+| `builtin` | JSON/HTML remote eng |
+| `underdog` | Jobs API |
+| `jobgether` | HTML / embedded props |
+| `wellfound` | Zyte Scrapy latest run |
+
+## Exact algorithm
+
+1. Abort if scheduler disabled (unless override) or `isRunning`.  
+2. `markSchedulerRunning()` + create `RunHistory(running)`.  
+3. Read `max_jobs`, `min_match_score`, profile brief, Gemini key.  
+4. `Promise.allSettled(SCRAPERS)` — collect jobs, log failures.  
+5. `normalizeJob` each (catch → error log).  
+6. `filterDuplicates`.  
+7. `prefilterJobsForScoring` then `slice(0, maxJobs)`.  
+8. Score via `processJobsWithAI` (cron: delay 400ms, budget 40s, max 12).  
+9. Upsert jobs by `applyUrl`.  
+10. Load top 5 un-notified ≥ `min_match_score` → `sendTopMatches` → mark notified.  
+11. `enqueueEligibleJobs` → optional Telegram queue bump.  
+12. `buildApplyDigestText` → Telegram.  
+13. `sendRunReport` → finalize RunHistory → `markSchedulerIdle`.
+
+## Cron construction
+
+`vercel.json` hits `/api/cron` at UTC `0 2 * * *` and `0 12 * * *` (~08:00 / 18:00 IST).
+
+Route behavior:
+
+- Optional Bearer `CRON_SECRET`  
+- Arms scheduler target hours to 2 & 12  
+- `shouldRunScheduledPipeline` prevents double-run same UTC hour  
+- `maxDuration = 60` for Hobby  
+
+## Offline helpers
+
+| Script | Behavior |
+| --- | --- |
+| `scrape:persist` | Persist without AI (still quality-filtered) |
+| `score:backfill` | Score unscored quality jobs + enqueue |
+| `test:scrapers` | Isolation table |
+| `test:pipeline` | Counts through quality |
+
+## Failure taxonomy
+
+| Stage | Typical cause | Effect |
+| --- | --- | --- |
+| scrape | block / missing Zyte | partial sources |
+| normalize | bad URL | job dropped |
+| ai | bad key / timeout | score 0 / budget skip |
+| notify | Telegram misconfig | matches stay un-notified |
+| enqueue | quota / disabled | no Application rows |
