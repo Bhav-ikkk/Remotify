@@ -36,8 +36,50 @@ Remotify is a lightweight Next.js automation app that collects remote roles from
 2. **Normalize** — titles, skills, and remoteness tokens become consistent labels.
 3. **Deduplicate** — company+title, apply URL, and similarity checks drop repeats.
 4. **Score** — Gemini evaluates each job against a target profile (`aiScore`, matched/missing skills, reason).
-5. **Notify** — top matches go to Telegram; every run writes `RunHistory` metrics.
+5. **Notify** — top matches go to Telegram **with a tailored resume PDF**; every run writes `RunHistory` metrics.
 6. **Observe** — dashboard KPIs and settings panels stay in sync with Postgres.
+7. **On-demand** — Telegram slash commands (`/grab`, `/matches`, `/resume`) export Excel / PDF from stored leads.
+
+---
+
+## Telegram bot commands
+
+After deploy, register commands + webhook:
+
+```bash
+curl -X POST "$NEXT_PUBLIC_APP_URL/api/telegram/setup" \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d "{\"webhookUrl\":\"$NEXT_PUBLIC_APP_URL\"}"
+```
+
+| Command | What you get |
+| --- | --- |
+| `/grab` | Excel of **all** apply-open scraped leads (last 30 days) |
+| `/grab 7` | Same, last 7 days |
+| `/matches` | Excel of **AI-matched** leads only |
+| `/resume` | Master resume PDF (classic ATS layout via PDFKit) |
+| `/status` | Profile + lead counts |
+| `/help` | Command list |
+
+Automatic pipeline alerts still send top matches **plus** a per-job tailored resume PDF.
+
+> Tip: For slash commands, message the bot in a **private chat** or group where it can read commands. Channel bots must be admin; prefer DM for `/grab`.
+
+---
+
+## Candidate profile + resume
+
+- **DB profile** powers AI scoring (skills, projects, priorities).
+- **Master resume** is built from that profile; job-specific runs reorder skills/projects and tweak the summary — still a normal Times-based one-column PDF (not a flashy AI template).
+- Library choice: **PDFKit** (serverless-friendly, no Chromium). Excel export uses **ExcelJS**.
+
+```bash
+npm run profile:seed
+npm run verify:grab          # local Excel + PDF files in .tmp-verify/
+npm run verify:grab:send     # also deliver to Telegram
+```
+
 
 ---
 
@@ -91,9 +133,27 @@ All database, AI, and notification secrets are injected **strictly at runtime** 
 ### 3. Database
 
 ```bash
-npx prisma migrate dev
+npx prisma db push
 npx prisma generate
 ```
+
+### 3b. Candidate profile (AI matching brain)
+
+Remotify scores jobs against a structured **candidate profile** in Postgres (skills, projects, priorities, experience) — not a single vague string.
+
+- **Committed:** `data/profile.demo.json` (fake open-source sample — safe for GitHub)
+- **Local / production:** `data/profile.personal.json` (gitignored). Copy your real profile here, then seed:
+
+```bash
+npm run profile:seed          # personal if present, else demo
+npm run profile:seed:demo     # force demo data
+```
+
+Inspect the active profile: `GET /api/profile` or `GET /api/profile?full=1`.
+
+The pipeline calls `buildAiMatchProfile()` so Gemini sees your priorities and project evidence. Settings → Target Profile remains a fallback only when no active DB profile exists.
+
+**Next (planned):** master-resume template → per-job tailored PDF attached to Telegram leads.
 
 ### 4. Run
 
@@ -108,20 +168,25 @@ Open [http://localhost:3000](http://localhost:3000). Connectivity can be verifie
 ## Project Structure
 
 ```text
+/data
+  ├── profile.demo.json      # Safe sample profile (committed)
+  └── profile.personal.json  # Your real profile (gitignored)
 /prisma
-  └── schema.prisma          # Job, Setting, SchedulerConfig, RunHistory
+  └── schema.prisma          # Jobs, settings, scheduler, run history, candidate profile
 /src
   ├── app/
-  │   ├── api/               # Route handlers (pipeline, settings, health)
-  │   ├── dashboard/         # Metrics UI (later phases)
-  │   ├── settings/          # Control panels (later phases)
+  │   ├── api/               # Route handlers (pipeline, settings, profile, health)
+  │   ├── dashboard/         # Metrics UI
+  │   ├── settings/          # Control panels
   │   └── layout.js
   ├── components/            # Shared UI
-  ├── services/              # database, ai, notification, scheduler
+  ├── services/              # database, ai, profile, notification, scheduler, pipeline
   ├── scrapers/              # One module per job board
   ├── normalizers/           # Title / skill / location rules
-  └── utils/                 # Dedup helpers
+  ├── scripts/               # seed-profile, pipeline tests
+  └── utils/                 # Dedup + AI batch helpers
 ```
+
 
 ---
 
@@ -173,6 +238,9 @@ Open [http://localhost:3000](http://localhost:3000). Connectivity can be verifie
 | **5** | Gemini scoring strategy wrapper |
 | **6** | Telegram notifications |
 | **7** | Scheduler + chunked pipeline + cleanup |
+| **8** | Candidate profile DB (skills/projects/priorities) wired into AI matching |
+| **9** | Master resume template + per-job tailored PDF on Telegram |
+| **10** | Broader job-source coverage + web discovery for fresh openings |
 
 ---
 
