@@ -10,6 +10,12 @@ export const SETTING_KEYS = {
   TELEGRAM_CHAT_ID: "telegram_chat_id",
   ZYTE_API_KEY: "zyte_api_key",
   ZYTE_PROJECT_ID: "zyte_project_id",
+  DAILY_APPLY_QUOTA: "daily_apply_quota",
+  APPLY_MIN_SCORE: "apply_min_score",
+  APPLY_ENABLED: "apply_enabled",
+  APPLY_EMAIL_TO: "apply_email_to",
+  GMAIL_USER: "gmail_user",
+  GMAIL_APP_PASSWORD: "gmail_app_password",
 };
 
 /**
@@ -130,6 +136,13 @@ export async function getAppSettings({ redact = true } = {}) {
 
   const maxJobsRaw = map[SETTING_KEYS.MAX_JOBS];
   const minScoreRaw = map[SETTING_KEYS.MIN_MATCH_SCORE];
+  const applyQuotaRaw = map[SETTING_KEYS.DAILY_APPLY_QUOTA];
+  const applyMinRaw = map[SETTING_KEYS.APPLY_MIN_SCORE];
+  const applyEnabledRaw = map[SETTING_KEYS.APPLY_ENABLED];
+  const gmailPass =
+    typeof map[SETTING_KEYS.GMAIL_APP_PASSWORD] === "string"
+      ? map[SETTING_KEYS.GMAIL_APP_PASSWORD]
+      : "";
 
   return {
     database: await pingDatabase(),
@@ -162,6 +175,28 @@ export async function getAppSettings({ redact = true } = {}) {
       apiKeyConfigured: Boolean(zyteApiKey),
       projectId: zyteProjectId,
     },
+    apply: {
+      enabled:
+        typeof applyEnabledRaw === "boolean" ? applyEnabledRaw : true,
+      dailyQuota:
+        typeof applyQuotaRaw === "number" && Number.isFinite(applyQuotaRaw)
+          ? applyQuotaRaw
+          : 35,
+      minScore:
+        typeof applyMinRaw === "number" && Number.isFinite(applyMinRaw)
+          ? applyMinRaw
+          : 75,
+      emailTo:
+        typeof map[SETTING_KEYS.APPLY_EMAIL_TO] === "string"
+          ? map[SETTING_KEYS.APPLY_EMAIL_TO]
+          : "Bhavikkjoshiii@gmail.com",
+      gmailUser:
+        typeof map[SETTING_KEYS.GMAIL_USER] === "string"
+          ? map[SETTING_KEYS.GMAIL_USER]
+          : "",
+      gmailAppPassword: redact ? maskSecret(gmailPass) : gmailPass,
+      gmailConfigured: Boolean(gmailPass),
+    },
   };
 }
 
@@ -177,6 +212,12 @@ export async function getAppSettings({ redact = true } = {}) {
  *   telegramChatId?: string,
  *   zyteApiKey?: string,
  *   zyteProjectId?: string,
+ *   applyEnabled?: boolean,
+ *   dailyApplyQuota?: number,
+ *   applyMinScore?: number,
+ *   applyEmailTo?: string,
+ *   gmailUser?: string,
+ *   gmailAppPassword?: string,
  * }} payload
  */
 export async function saveAppSettings(payload) {
@@ -197,6 +238,24 @@ export async function saveAppSettings(payload) {
   }
   if (typeof payload.zyteProjectId === "string") {
     updates[SETTING_KEYS.ZYTE_PROJECT_ID] = payload.zyteProjectId.trim();
+  }
+  if (typeof payload.applyEnabled === "boolean") {
+    updates[SETTING_KEYS.APPLY_ENABLED] = payload.applyEnabled;
+  }
+  if (typeof payload.dailyApplyQuota === "number") {
+    updates[SETTING_KEYS.DAILY_APPLY_QUOTA] = Math.max(
+      1,
+      Math.min(35, Math.floor(payload.dailyApplyQuota))
+    );
+  }
+  if (typeof payload.applyMinScore === "number") {
+    updates[SETTING_KEYS.APPLY_MIN_SCORE] = payload.applyMinScore;
+  }
+  if (typeof payload.applyEmailTo === "string") {
+    updates[SETTING_KEYS.APPLY_EMAIL_TO] = payload.applyEmailTo.trim();
+  }
+  if (typeof payload.gmailUser === "string") {
+    updates[SETTING_KEYS.GMAIL_USER] = payload.gmailUser.trim();
   }
 
   if (
@@ -221,6 +280,14 @@ export async function saveAppSettings(payload) {
     !looksMasked(payload.zyteApiKey)
   ) {
     updates[SETTING_KEYS.ZYTE_API_KEY] = payload.zyteApiKey;
+  }
+
+  if (
+    typeof payload.gmailAppPassword === "string" &&
+    payload.gmailAppPassword.length > 0 &&
+    !looksMasked(payload.gmailAppPassword)
+  ) {
+    updates[SETTING_KEYS.GMAIL_APP_PASSWORD] = payload.gmailAppPassword;
   }
 
   if (Object.keys(updates).length > 0) {
