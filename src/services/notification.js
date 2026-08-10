@@ -1,28 +1,13 @@
-import axios from "axios";
-import { prisma } from "@/services/database";
-import { getSetting, SETTING_KEYS } from "@/services/settings";
+import { prisma } from "./database.js";
+import {
+  resolveTelegramCredentials,
+  telegramApi,
+  sendTelegramDocument,
+} from "./telegram/client.js";
+import { getActiveProfile } from "./profile.js";
+import { generateMasterResumePdf } from "./resume/pdf.js";
 
-/**
- * Resolve Telegram credentials: DB settings first, then env fallback.
- * @returns {Promise<{ token: string, chatId: string }>}
- */
-export async function resolveTelegramCredentials() {
-  const dbToken = await getSetting(SETTING_KEYS.TELEGRAM_BOT_TOKEN);
-  const dbChatId = await getSetting(SETTING_KEYS.TELEGRAM_CHAT_ID);
-
-  const envToken = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
-  const envChatId = String(process.env.TELEGRAM_CHAT_ID || "").trim();
-
-  const dbTokenValue =
-    typeof dbToken === "string" && dbToken.trim() ? dbToken.trim() : "";
-  const dbChatValue =
-    typeof dbChatId === "string" && dbChatId.trim() ? dbChatId.trim() : "";
-
-  const token = dbTokenValue || envToken;
-  const chatId = dbChatValue || envChatId;
-
-  return { token, chatId };
-}
+export { resolveTelegramCredentials } from "./telegram/client.js";
 
 /**
  * Verify Telegram bot token (+ optional chat) via getMe and a probe message.
@@ -49,7 +34,7 @@ export async function verifyTelegramConfig(token, chatId) {
 
   const probe = await telegramApi(botToken, "sendMessage", {
     chat_id: targetChatId,
-    text: "👋 Remotify Connection Test: Your notification pipeline is configured successfully!",
+    text: "👋 Remotify Connection Test: Your notification pipeline is configured successfully!\n\nTry /help for grab · matches · resume commands.",
     parse_mode: "HTML",
     disable_web_page_preview: true,
   });
@@ -74,9 +59,9 @@ export async function verifyTelegramConfig(token, chatId) {
 }
 
 /**
- * Send top matching jobs to the configured Telegram chat.
+ * Send top matching jobs to Telegram — message + tailored resume PDF when profile exists.
  * @param {Array<object>} jobs
- * @returns {Promise<{ sent: number, failed: number, errors: string[], deliveredIds: string[] }>}
+ * @returns {Promise<{ sent: number, failed: number, errors: string[], deliveredIds: string[], resumesSent: number }>}
  */
 export async function sendTopMatches(jobs) {
   const { token, chatId } = await resolveTelegramCredentials();
@@ -89,8 +74,19 @@ export async function sendTopMatches(jobs) {
   const list = Array.isArray(jobs) ? jobs.slice(0, 5) : [];
   let sent = 0;
   let failed = 0;
+  let resumesSent = 0;
   const errors = [];
   const deliveredIds = [];
+
+  let profile = null;
+  try {
+    profile = await getActiveProfile();
+  } catch (error) {
+    console.error(
+      "[telegram] profile load failed:",
+      error instanceof Error ? error.message : error
+    );
+  }
 
   for (const job of list) {
     try {
@@ -123,6 +119,25 @@ export async function sendTopMatches(jobs) {
         jobTitle: job?.title,
         messageId: response.result?.message_id,
       });
+
+      if (profile) {
+        try {
+          const { buffer, filename } = await generateMasterResumePdf(profile, {
+            job,
+          });
+          await sendTelegramDocument(token, chatId, buffer, filename, {
+            caption: `Resume tailored for ${job.title || "role"} @ ${job.company || "company"}`,
+          });
+          resumesSent += 1;
+        } catch (resumeError) {
+          const message =
+            resumeError instanceof Error
+              ? resumeError.message
+              : String(resumeError);
+          errors.push(`resume:${message}`);
+          console.error("[telegram] resume PDF failed:", message);
+        }
+      }
     } catch (error) {
       failed += 1;
       const message = error instanceof Error ? error.message : String(error);
@@ -137,7 +152,7 @@ export async function sendTopMatches(jobs) {
     }
   }
 
-  return { sent, failed, errors, deliveredIds };
+  return { sent, failed, errors, deliveredIds, resumesSent };
 }
 
 /**
@@ -239,26 +254,6 @@ export function formatJobMessage(job) {
   }
 
   return lines.join("\n");
-}
-
-/**
- * @param {string} token
- * @param {string} method
- * @param {object} [payload]
- */
-async function telegramApi(token, method, payload) {
-  const url = `https://api.telegram.org/bot${token}/${method}`;
-  try {
-    const { data } = await axios.post(url, payload ?? {}, {
-      timeout: 20000,
-      validateStatus: () => true,
-    });
-    return data;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[telegram] ${method} network error:`, message);
-    return { ok: false, description: message };
-  }
 }
 
 /**
