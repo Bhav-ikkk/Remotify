@@ -11,6 +11,7 @@ import { filterDuplicates } from "@/utils/deduplicate.js";
 import { processJobsWithAI } from "@/utils/ai-batch.js";
 import { AIService, createGeminiProvider } from "@/services/ai/index.js";
 import { sendTopMatches, sendRunReport } from "@/services/notification";
+import { buildAiMatchProfile } from "@/services/profile";
 
 import { scrape as scrapeSkipTheDrive } from "@/scrapers/skipthedrive.js";
 import { scrape as scrapeBuiltIn } from "@/scrapers/builtin.js";
@@ -87,10 +88,8 @@ export async function runPipeline(manualOverride = false, options = {}) {
       SETTING_KEYS.MIN_MATCH_SCORE,
       85
     );
-    const userProfile = await readStringSetting(
-      SETTING_KEYS.TARGET_PROFILE,
-      "Remote-friendly software engineer seeking full-stack JavaScript roles."
-    );
+    // Prefer structured CandidateProfile from Postgres; fall back to settings blob.
+    const userProfile = await buildAiMatchProfile();
     const apiKey = await resolveGeminiApiKey();
 
     // --- Scrape ---
@@ -397,15 +396,6 @@ async function patchRun(id, data) {
 async function readNumberSetting(key, fallback) {
   const value = await getSetting(key);
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-/**
- * @param {string} key
- * @param {string} fallback
- */
-async function readStringSetting(key, fallback) {
-  const value = await getSetting(key);
-  return typeof value === "string" && value.trim() ? value : fallback;
 }
 
 async function resolveGeminiApiKey() {
