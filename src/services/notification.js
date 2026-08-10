@@ -253,6 +253,11 @@ export function formatJobMessage(job) {
     lines.push("", `🔗 <a href="${escapeHtml(applyUrl)}">Apply Directly Here</a>`);
   }
 
+  lines.push(
+    "",
+    "<i>More leads: /grab (all) · /matches (scored) · /resume (PDF)</i>"
+  );
+
   return lines.join("\n");
 }
 
