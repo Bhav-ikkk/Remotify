@@ -1,67 +1,88 @@
 import { prisma } from "../database.js";
-import { loadMasterResumeJson } from "../resume/template.js";
+import { loadMasterResume } from "../resume/template.js";
 
 /**
- * Ensure an active ApplicationIdentity exists, seeded from locked master resume.
+ * Resolve the active ApplicationIdentity as a live projection of the active
+ * CandidateProfile's master resume — never a write-once seed. Every call
+ * re-syncs contact facts (name, email, phone, location, links) from the DB
+ * master resume, so a stale first-write can never lock in wrong data.
+ *
+ * Preference fields the resume does not own (work auth, sponsorship, salary,
+ * notice period, cover letter blurb) are only overwritten when the master
+ * resume document provides them under an `identity` key; otherwise existing
+ * values are preserved.
+ *
+ * Fails loudly when no complete master resume exists in the DB — a real
+ * application must never run with placeholder identity data.
  */
 export async function ensureApplicationIdentity() {
-  const existing = await prisma.applicationIdentity.findFirst({
-    where: { isActive: true },
-    orderBy: { updatedAt: "desc" },
-  });
-  if (existing) return existing;
+  const { source, data } = await loadMasterResume();
+  if (source !== "db") {
+    throw new Error(
+      "RESUME_DEMO=1 demo resume cannot back an application identity. Unset RESUME_DEMO and import your real master resume with `npm run resume:sync`."
+    );
+  }
 
-  let seed = {
-    fullName: "Applicant",
-    email: "applicant@example.com",
-    phone: null,
-    location: null,
-    linkedinUrl: null,
-    githubUrl: null,
-    portfolioUrl: null,
-    workAuthNotes: "India-based · open to remote worldwide",
-    requiresSponsorship: false,
-    remoteOk: true,
-    relocateOk: false,
-    salaryExpectation: null,
-    noticePeriod: "Immediate / 15 days",
-    coverLetterBlurb:
-      "Full-stack developer shipping production Next.js and PostgreSQL products, including GenAI-assisted systems.",
+  const contact = data.contact || {};
+  const identityCfg =
+    data.identity && typeof data.identity === "object" ? data.identity : {};
+
+  const projected = {
+    fullName: data.displayName || data.fullName,
+    email: contact.email,
+    phone: contact.phone || null,
+    location: contact.location || null,
+    linkedinUrl: contact.linkedinUrl || null,
+    githubUrl: contact.githubUrl || null,
+    portfolioUrl: contact.portfolioUrl || null,
   };
 
-  try {
-    const { data } = loadMasterResumeJson();
-    const c = data.contact || {};
-    seed = {
-      fullName: data.displayName || data.fullName || seed.fullName,
-      email: c.email || seed.email,
-      phone: c.phone || null,
-      location: c.location || null,
-      linkedinUrl: c.linkedinUrl || null,
-      githubUrl: c.githubUrl || null,
-      portfolioUrl: c.portfolioUrl || null,
-      workAuthNotes: "India-based · open to remote worldwide",
+  /** @type {Record<string, unknown>} */
+  const preferences = {};
+  if (typeof identityCfg.workAuthNotes === "string") {
+    preferences.workAuthNotes = identityCfg.workAuthNotes;
+  }
+  if (typeof identityCfg.requiresSponsorship === "boolean") {
+    preferences.requiresSponsorship = identityCfg.requiresSponsorship;
+  }
+  if (typeof identityCfg.remoteOk === "boolean") {
+    preferences.remoteOk = identityCfg.remoteOk;
+  }
+  if (typeof identityCfg.relocateOk === "boolean") {
+    preferences.relocateOk = identityCfg.relocateOk;
+  }
+  if (typeof identityCfg.salaryExpectation === "string") {
+    preferences.salaryExpectation = identityCfg.salaryExpectation;
+  }
+  if (typeof identityCfg.noticePeriod === "string") {
+    preferences.noticePeriod = identityCfg.noticePeriod;
+  }
+  if (typeof identityCfg.coverLetterBlurb === "string") {
+    preferences.coverLetterBlurb = identityCfg.coverLetterBlurb;
+  }
+
+  const defaultBlurb =
+    String(data.summary || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 600) || null;
+
+  return prisma.applicationIdentity.upsert({
+    where: { slug: "default" },
+    create: {
+      slug: "default",
+      isActive: true,
+      workAuthNotes: null,
       requiresSponsorship: false,
       remoteOk: true,
       relocateOk: false,
       salaryExpectation: null,
-      noticePeriod: "Immediate / 15 days",
-      coverLetterBlurb: String(data.summary || "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 600),
-    };
-  } catch (error) {
-    console.warn(
-      "[apply:identity] master resume unavailable, using fallback:",
-      error instanceof Error ? error.message : error
-    );
-  }
-
-  return prisma.applicationIdentity.upsert({
-    where: { slug: "default" },
-    create: { slug: "default", isActive: true, ...seed },
-    update: { isActive: true, ...seed },
+      noticePeriod: null,
+      coverLetterBlurb: defaultBlurb,
+      ...projected,
+      ...preferences,
+    },
+    update: { isActive: true, ...projected, ...preferences },
   });
 }
 
