@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { getSetting, SETTING_KEYS } from "../settings.js";
+import { sendOpsAlert } from "../telegram/alerts.js";
 import { getApplyConfig } from "./queue.js";
 import { buildApplicationsExcelBuffer } from "./export.js";
 
@@ -33,6 +34,21 @@ export async function resolveGmailTransport() {
 }
 
 /**
+ * Fail closed when no recipient is configured: alert loudly and refuse to
+ * send rather than falling back to any hardcoded address.
+ * @param {{ emailTo?: string }} config
+ * @param {string} context
+ */
+async function requireRecipient(config, context) {
+  const emailTo = String(config?.emailTo || "").trim();
+  if (emailTo) return emailTo;
+  await sendOpsAlert(
+    `${context} email skipped: APPLY_EMAIL_TO is not configured. Set it in Settings → Apply or as the APPLY_EMAIL_TO env var.`
+  );
+  return "";
+}
+
+/**
  * Send end-of-worker digest with optional Excel attachment.
  * @param {{
  *   summary: object,
@@ -42,6 +58,10 @@ export async function resolveGmailTransport() {
  */
 export async function sendApplyDigestEmail(payload) {
   const config = await getApplyConfig();
+  const emailTo = await requireRecipient(config, "Apply digest");
+  if (!emailTo) {
+    return { sent: false, reason: "apply_email_to_not_configured" };
+  }
   const mail = await resolveGmailTransport();
   if (!mail.ok) {
     return { sent: false, reason: mail.reason };
@@ -66,7 +86,7 @@ export async function sendApplyDigestEmail(payload) {
   /** @type {import('nodemailer').SendMailOptions} */
   const message = {
     from: mail.user,
-    to: config.emailTo,
+    to: emailTo,
     subject,
     text,
   };
@@ -92,39 +112,78 @@ export async function sendApplyDigestEmail(payload) {
   }
 
   await mail.transporter.sendMail(message);
-  return { sent: true, to: config.emailTo };
+  return { sent: true, to: emailTo };
 }
 
 /**
- * Notify about a single needs_review application.
- * @param {{ application: object, job?: object }} payload
+ * Per-application outcome email — one real-time email per application,
+ * sent right after the worker reports `submitted` or `needs_review`.
+ * Includes job, company, AI score/reason, apply URL, and the exact tailored
+ * resume PDF that was uploaded (when a stored artifact is provided).
+ *
+ * @param {{
+ *   application: object,
+ *   job?: object,
+ *   resume?: { fileName: string, data: Buffer | Uint8Array } | null,
+ * }} payload
  */
-export async function sendNeedsReviewEmail(payload) {
+export async function sendApplicationOutcomeEmail(payload) {
   const config = await getApplyConfig();
+  const emailTo = await requireRecipient(config, "Application outcome");
+  if (!emailTo) {
+    return { sent: false, reason: "apply_email_to_not_configured" };
+  }
   const mail = await resolveGmailTransport();
   if (!mail.ok) return { sent: false, reason: mail.reason };
 
   const app = payload.application;
   const job = payload.job || app?.job || {};
-  const subject = `Remotify needs review — ${job.title || "role"} @ ${job.company || "company"}`;
+  const submitted = app?.status === "submitted";
+
+  const subject = submitted
+    ? `Remotify submitted — ${job.title || "role"} @ ${job.company || "company"}`
+    : `Remotify needs review — ${job.title || "role"} @ ${job.company || "company"}`;
+
   const text = [
-    "An application could not be auto-submitted (hard ATS / captcha / unknown form).",
+    submitted
+      ? "An application was auto-submitted. Details and the exact resume sent are below."
+      : "An application could not be auto-submitted (hard ATS / captcha / unfilled required fields).",
     "",
     `Title: ${job.title || ""}`,
     `Company: ${job.company || ""}`,
     `ATS: ${app?.atsType || ""}`,
-    `Score: ${app?.aiScore ?? ""}`,
+    `AI score: ${app?.aiScore ?? job.aiScore ?? ""}`,
+    job.aiReason ? `AI reason: ${job.aiReason}` : null,
     `Apply: ${app?.applyUrl || job.applyUrl || ""}`,
     `Application ID: ${app?.id || ""}`,
+    app?.confirmationText ? `Confirmation: ${app.confirmationText}` : null,
+    app?.error ? `Error: ${app.error}` : null,
     "",
-    "Use Telegram /approvals or open the link and submit manually with your tailored resume.",
-  ].join("\n");
+    submitted
+      ? "The attached PDF is the exact tailored resume this company received."
+      : "Use Telegram /approvals or open the link and submit manually with your tailored resume.",
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
 
-  await mail.transporter.sendMail({
+  /** @type {import('nodemailer').SendMailOptions} */
+  const message = {
     from: mail.user,
-    to: config.emailTo,
+    to: emailTo,
     subject,
     text,
-  });
-  return { sent: true, to: config.emailTo };
+  };
+
+  if (payload.resume?.data) {
+    message.attachments = [
+      {
+        filename: payload.resume.fileName || "resume.pdf",
+        content: Buffer.from(payload.resume.data),
+        contentType: "application/pdf",
+      },
+    ];
+  }
+
+  await mail.transporter.sendMail(message);
+  return { sent: true, to: emailTo };
 }
