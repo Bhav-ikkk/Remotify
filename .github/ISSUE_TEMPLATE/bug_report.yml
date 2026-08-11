@@ -1,0 +1,37 @@
+name: Bug report
+description: Something broke in the pipeline, worker, or UI
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Scrapers / job sources
+        - AI scoring / matching
+        - Resume generation / tailoring
+        - Apply queue / local worker
+        - Telegram bot
+        - Dashboard / UI
+        - Deployment / configuration
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the command or flow you ran and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste console/worker output. Redact secrets and personal data.
+      render: shell
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "e.g. Node 20.11, Windows 11, Vercel + local worker"
