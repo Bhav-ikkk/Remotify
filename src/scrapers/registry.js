@@ -8,6 +8,9 @@ import { scrape as scrapeRemoteOk } from "./remoteok.js";
 import { scrape as scrapeHimalayas } from "./himalayas.js";
 import { scrape as scrapeArbeitnow } from "./arbeitnow.js";
 import { scrape as scrapeAtsBoards } from "./ats-boards.js";
+import { scrape as scrapeWeWorkRemotely } from "./weworkremotely.js";
+import { scrape as scrapeJobicy } from "./jobicy.js";
+import { scrape as scrapeWorkingNomads } from "./workingnomads.js";
 
 /** Canonical scraper registry for pipeline / persist / tests. */
 export const SCRAPERS = [
@@ -16,6 +19,9 @@ export const SCRAPERS = [
   { name: "remoteok", label: "RemoteOK", run: scrapeRemoteOk },
   { name: "himalayas", label: "Himalayas", run: scrapeHimalayas },
   { name: "arbeitnow", label: "Arbeitnow", run: scrapeArbeitnow },
+  { name: "weworkremotely", label: "We Work Remotely", run: scrapeWeWorkRemotely },
+  { name: "jobicy", label: "Jobicy", run: scrapeJobicy },
+  { name: "workingnomads", label: "Working Nomads", run: scrapeWorkingNomads },
   { name: "skipthedrive", label: "SkipTheDrive", run: scrapeSkipTheDrive },
   { name: "builtin", label: "Built In", run: scrapeBuiltIn },
   { name: "underdog", label: "Underdog", run: scrapeUnderdog },
