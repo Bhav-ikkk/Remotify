@@ -1,5 +1,6 @@
 import { prisma } from "../database.js";
 import { getSetting, SETTING_KEYS } from "../settings.js";
+import { sendOpsAlert } from "../telegram/alerts.js";
 import { canAutoSubmit, detectAtsType } from "./ats.js";
 import { ensureApplicationIdentity } from "./identity.js";
 
@@ -56,10 +57,12 @@ export async function getApplyConfig() {
       ? minRaw
       : DEFAULT_APPLY_MIN_SCORE;
 
+  // Must be explicitly configured (DB setting or APPLY_EMAIL_TO env).
+  // Email senders fail closed when empty — no hardcoded fallback address.
   const emailTo =
-    typeof emailRaw === "string" && emailRaw.trim()
-      ? emailRaw.trim()
-      : "Bhavikkjoshiii@gmail.com";
+    (typeof emailRaw === "string" && emailRaw.trim()) ||
+    String(process.env.APPLY_EMAIL_TO || "").trim() ||
+    "";
 
   const preferAutoAts =
     typeof preferRaw === "boolean"
@@ -105,7 +108,19 @@ export async function countQuotaUsedToday() {
  * @param {{ limit?: number }} [options]
  */
 export async function enqueueEligibleJobs(options = {}) {
-  await ensureApplicationIdentity();
+  try {
+    await ensureApplicationIdentity();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await sendOpsAlert(`Apply enqueue halted — identity unavailable: ${message}`);
+    return {
+      enabled: false,
+      enqueued: 0,
+      remaining: 0,
+      reason: "identity_unavailable",
+      error: message,
+    };
+  }
   const config = await getApplyConfig();
   if (!config.enabled) {
     return { enabled: false, enqueued: 0, remaining: 0, reason: "apply_disabled" };
@@ -254,6 +269,17 @@ export async function claimNextApplication(options = {}) {
     return { claimed: false, reason: "queue_empty" };
   }
 
+  // Resolve identity before claiming: if the master resume is missing the
+  // application must not leave "queued", and the failure must be loud.
+  let identity;
+  try {
+    identity = await ensureApplicationIdentity();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await sendOpsAlert(`Apply claim refused — identity unavailable: ${message}`);
+    return { claimed: false, reason: "identity_unavailable", error: message };
+  }
+
   const workerId = options.workerId || `worker-${Date.now()}`;
   const updated = await prisma.application.update({
     where: { id: next.id },
@@ -264,8 +290,6 @@ export async function claimNextApplication(options = {}) {
     },
     include: { job: true },
   });
-
-  const identity = await ensureApplicationIdentity();
 
   return {
     claimed: true,

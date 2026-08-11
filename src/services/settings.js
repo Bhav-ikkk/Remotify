@@ -193,7 +193,7 @@ export async function getAppSettings({ redact = true } = {}) {
       emailTo:
         typeof map[SETTING_KEYS.APPLY_EMAIL_TO] === "string"
           ? map[SETTING_KEYS.APPLY_EMAIL_TO]
-          : "Bhavikkjoshiii@gmail.com",
+          : "",
       gmailUser:
         typeof map[SETTING_KEYS.GMAIL_USER] === "string"
           ? map[SETTING_KEYS.GMAIL_USER]

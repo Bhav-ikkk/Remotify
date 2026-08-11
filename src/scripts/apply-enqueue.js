@@ -7,14 +7,16 @@ import { setSetting, SETTING_KEYS } from "../services/settings.js";
 import { prisma } from "../services/database.js";
 
 async function main() {
-  // Sensible defaults if unset
+  // Sensible defaults if unset. APPLY_EMAIL_TO has no hardcoded fallback —
+  // it must come from the env or be set in Settings → Apply.
   const defaults = [
     [SETTING_KEYS.DAILY_APPLY_QUOTA, 35],
     [SETTING_KEYS.APPLY_MIN_SCORE, 75],
     [SETTING_KEYS.APPLY_ENABLED, true],
     [SETTING_KEYS.APPLY_PREFER_AUTO_ATS, true],
-    [SETTING_KEYS.APPLY_EMAIL_TO, "Bhavikkjoshiii@gmail.com"],
   ];
+  const envEmailTo = String(process.env.APPLY_EMAIL_TO || "").trim();
+  if (envEmailTo) defaults.push([SETTING_KEYS.APPLY_EMAIL_TO, envEmailTo]);
   for (const [key, value] of defaults) {
     const existing = await prisma.setting.findUnique({ where: { key } });
     if (!existing) await setSetting(key, value);
