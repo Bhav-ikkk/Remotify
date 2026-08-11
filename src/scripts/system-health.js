@@ -4,7 +4,7 @@
 import { prisma } from "../services/database.js";
 import { buildAiMatchProfile, getActiveProfile } from "../services/profile.js";
 import { generateMasterResumePdf } from "../services/resume/pdf.js";
-import { loadMasterResumeJson } from "../services/resume/template.js";
+import { loadMasterResume } from "../services/resume/template.js";
 import { detectAtsType, canAutoSubmit } from "../services/apply/ats.js";
 import {
   getApplyStatusSummary,
@@ -30,12 +30,12 @@ function fail(name, detail) {
 }
 
 async function main() {
-  // 1) Master resume locked
+  // 1) Master resume locked (DB CandidateProfile.masterResume)
   try {
-    const { path, data } = loadMasterResumeJson();
+    const { source, data } = await loadMasterResume();
     ok(
       "locked_master_resume",
-      `${path.includes("personal") ? "personal" : "demo"} · ${data.displayName || data.fullName}`
+      `${source} · ${data.displayName || data.fullName}`
     );
   } catch (e) {
     fail("locked_master_resume", e.message);

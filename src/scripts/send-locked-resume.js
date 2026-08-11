@@ -1,12 +1,13 @@
 /**
- * Generate resume from locked master JSON (no DB required) and send to Telegram.
+ * Generate resume from the locked master resume (DB CandidateProfile, or the
+ * demo file with RESUME_DEMO=1) and send to Telegram.
  * Optional: pass --offline to skip job lookup entirely (master PDF only).
  */
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateMasterResumePdf } from "../services/resume/pdf.js";
-import { loadMasterResumeJson } from "../services/resume/template.js";
+import { loadMasterResume } from "../services/resume/template.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const offline = process.argv.includes("--offline");
@@ -22,6 +23,13 @@ function loadEnvFile() {
       process.env[m[1]] = m[2].replace(/^"|"$/g, "").trim();
     }
   }
+}
+
+function slugify(value) {
+  return String(value || "resume")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 async function tryLoadJob() {
@@ -76,11 +84,11 @@ async function sendTelegram(buffer, filename, caption, preamble) {
 
 async function main() {
   loadEnvFile();
-  const { path, data } = loadMasterResumeJson();
-  console.log(`Master resume: ${path}`);
+  const { source, data } = await loadMasterResume();
+  console.log(`Master resume source: ${source}`);
 
   const stubProfile = {
-    slug: "bhavik-joshi",
+    slug: slugify(data.displayName || data.fullName),
     fullName: data.displayName || data.fullName,
   };
 
