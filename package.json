@@ -18,6 +18,7 @@
     "verify:grab:send": "node src/scripts/verify-grab-resume.js --send",
     "resume:send": "node src/scripts/send-tailored-resume.js",
     "resume:send:locked": "node src/scripts/send-locked-resume.js",
+    "resume:sync": "node src/scripts/sync-master-resume.js",
     "scrape:persist": "node src/scripts/persist-scrape.js",
     "telegram:cmd": "node src/scripts/telegram-cmd.js",
     "apply:enqueue": "node src/scripts/apply-enqueue.js",
