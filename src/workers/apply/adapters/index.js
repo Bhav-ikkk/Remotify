@@ -1,8 +1,8 @@
-import { canAutoSubmit } from "../../services/apply/ats.js";
-import { identityToFormFields } from "../../services/apply/identity.js";
-import { applyGreenhouse } from "./adapters/greenhouse.js";
-import { applyLever } from "./adapters/lever.js";
-import { applyAshby } from "./adapters/ashby.js";
+import { canAutoSubmit } from "../../../services/apply/ats.js";
+import { identityToFormFields } from "../../../services/apply/identity.js";
+import { applyGreenhouse } from "./greenhouse.js";
+import { applyLever } from "./lever.js";
+import { applyAshby } from "./ashby.js";
 
 /**
  * Route to ATS adapter.
