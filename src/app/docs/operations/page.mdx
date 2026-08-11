@@ -13,7 +13,7 @@ Operator handbook for deploying, configuring, and debugging Remotify.
 1. Copy `.env.example` → `.env` / Vercel env  
 2. `npm install`  
 3. `npm run db:push` && `npm run db:generate`  
-4. Add `data/master-resume.personal.json` + profile seed (`profile:seed`)  
+4. Seed profile (`profile:seed`), then `npm run resume:sync` to lock your master resume into Postgres  
 5. Configure Telegram; test from Settings  
 6. `npm run test:scrapers` then Settings **Run now** (or `test:pipeline`)  
 7. `APPLY_DRY_RUN=1 npm run apply:worker` against your API base  

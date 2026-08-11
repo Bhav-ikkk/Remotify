@@ -109,21 +109,22 @@ adapters/ashby.js
 | --- | --- | --- |
 | Always `needs_review` | Unknown ATS / captcha / login wall | Manual apply + `/approve` |
 | `failed` quickly | Selector drift | Headed dry-run; fix adapter |
-| Claim 401 | Secret mismatch | Align worker env with Vercel |
-| PDF missing | Resume lock file absent | Provide `data/master-resume.personal.json` |
+| Claim 401 | Secret mismatch (or no secret configured — auth fails closed) | Align worker env with Vercel |
+| PDF missing / queue halted | No complete master resume in DB | Run `npm run resume:sync` |
 
 ## Resume pipeline
 
-1. **Locked master JSON** — `data/master-resume.personal.json` (gitignored) or demo via `RESUME_DEMO`.  
+1. **Locked master resume in Postgres** — `CandidateProfile.masterResume`, imported via `npm run resume:sync` (demo file only via explicit `RESUME_DEMO=1`).  
 2. **Light tailor** — `services/resume/tailor.js` emphasizes relevant skills; **no invented employers**.  
 3. **PDF** — `pdfkit` Helvetica LETTER via `generateMasterResumePdf`.  
-4. **Delivery** — upload to ATS + Telegram `/resume`.  
+4. **Provenance** — exact uploaded bytes stored as `ResumeArtifact` (sha256); download via `GET /api/applications/:id/resume`.  
+5. **Delivery** — upload to ATS + Telegram `/resume` + per-application email attachment.  
 
 Deprecated: prefer tailor/template path over legacy `master.js` helpers.
 
 ## Identity
 
-`ApplicationIdentity` holds the form facts (name, email, phone, links, work auth). Seed from resume/profile; worker should not hardcode personal emails long-term (see [Roadmap](/docs/roadmap)).
+`ApplicationIdentity` holds the form facts (name, email, phone, links, work auth). It is a **live projection** of the DB master resume — every queue/claim re-syncs contact facts, so stale seeds can never lock in wrong data. If no complete master resume exists, identity resolution fails loudly (Telegram alert) instead of substituting placeholders.
 
 ## Operator checklist (first safe apply)
 
