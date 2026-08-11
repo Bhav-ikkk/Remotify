@@ -302,6 +302,8 @@ model Application {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  resumeArtifact   ResumeArtifact?
+
   @@unique([jobId])
   @@unique([applyUrl])
   @@index([status])
@@ -309,4 +311,21 @@ model Application {
   @@index([submittedAt])
   @@index([createdAt])
   @@map("applications")
+}
+
+/// Durable copy of the exact tailored resume PDF uploaded for an application.
+/// Answers "which resume version did company X receive" after the fact.
+model ResumeArtifact {
+  id            String      @id @default(cuid())
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fileName      String
+  contentType   String      @default("application/pdf")
+  byteSize      Int
+  sha256        String
+  data          Bytes
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@map("resume_artifacts")
 }
