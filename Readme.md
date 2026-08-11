@@ -2,7 +2,11 @@
 
 **Apply with intent, not volume.**
 
-Self-hostable open-source pipeline — scrape remote jobs, score fit with AI, tailor ATS resumes, and auto-apply on Greenhouse / Lever / Ashby. Built for operators who want interviews, not spray.
+[![CI](https://github.com/Bhav-ikkk/Remotify/actions/workflows/ci.yml/badge.svg)](https://github.com/Bhav-ikkk/Remotify/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+Self-hostable open-source pipeline — scrape remote jobs from 13 sources, score fit with AI, tailor ATS resumes, and auto-apply on Greenhouse / Lever / Ashby. Built for operators who want interviews, not spray.
 
 Open source · MIT · $0 hosting (Vercel brain + local Playwright hands)
 
@@ -42,14 +46,40 @@ Remotify is a lightweight Next.js automation app that collects remote roles from
 └─────────────┘    └──────────────┘    └─────────────────────────────┘
 ```
 
-1. **Scrape** — Remotive, RemoteOK, Himalayas, Arbeitnow, company Greenhouse/Lever/Ashby boards, plus discovery boards.
+1. **Scrape** — 13 sources (see table below): free APIs, RSS feeds, and company Greenhouse/Lever/Ashby boards.
 2. **Normalize** — titles, skills, and remoteness tokens become consistent labels.
-3. **Deduplicate** — company+title, apply URL, and similarity checks drop repeats.
+3. **Deduplicate** — company+title, apply URL, and similarity checks drop repeats; only genuinely **new** positions enter the database.
 4. **Prefilter** — title allow/block + remote preference; auto-ATS ranked first for scoring budget.
 5. **Score** — Gemini evaluates each job against your **candidate profile** in Postgres.
 6. **Resume** — PDFKit renders your **locked master ATS resume**, lightly tailored per job.
 7. **Apply** — enqueue high scores (prefer auto-submit ATS); local Playwright worker submits.
 8. **Notify** — matches + apply digest to Telegram; runs write `RunHistory`.
+
+---
+
+## Job sources (13)
+
+| Source | Ingest | Notes |
+| --- | --- | --- |
+| ATS Boards | Greenhouse / Lever / Ashby APIs | Direct company boards from [`data/target-companies.json`](data/target-companies.json) — richest, auto-submittable leads |
+| Remotive | Free JSON API | Attribution required if republishing |
+| RemoteOK | Free JSON API | Attribution required if republishing |
+| Himalayas | Free JSON API | |
+| Arbeitnow | Free JSON API | |
+| We Work Remotely | Public RSS | Programming + full-stack categories |
+| Jobicy | Free JSON API | Dev industry, includes salary ranges |
+| Working Nomads | Free JSON API | Development category |
+| SkipTheDrive | HTML | |
+| Built In | HTML | |
+| Underdog | HTML | |
+| Jobgether | HTML | |
+| Wellfound | Zyte / Scrapy Cloud | Optional — needs `ZYTE_API_KEY` |
+
+Every source is validated against one Zod schema, filtered for software-IC titles, deduplicated against 30 days of history (URL + company/title + 90% description similarity), and only then persisted — so a position that already exists is never re-added, and a new one flows straight into scoring and the apply queue.
+
+**Why no LinkedIn scraper?** LinkedIn's terms of service prohibit automated access, and their bot defenses ban accounts/IPs — an open-source project can't responsibly ship that. In practice almost every LinkedIn tech posting links out to the company's Greenhouse / Lever / Ashby board, which the **ATS Boards** source ingests directly. Want more coverage? Add companies to `data/target-companies.json`.
+
+Adding a source is ~60 lines: see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-job-source).
 
 ---
 
@@ -99,13 +129,18 @@ npm run profile:seed:demo     # force demo into Postgres
 
 ### Master resume (PDF source of truth)
 
-Your real ATS PDF is locked as JSON. Job tailoring **reorders / lightly rephrases** only — it does **not** invent employers, metrics, or skills.
+Your real ATS PDF is locked as JSON and **stored in Postgres** (`CandidateProfile.masterResume`) — the same source of truth on Vercel and the local worker. Job tailoring **reorders / lightly rephrases** only — it does **not** invent employers, metrics, or skills. If no complete master resume exists in the DB, resume generation and the apply queue **fail loudly** (log + Telegram alert) instead of substituting demo data.
 
 | File | Git? | Purpose |
 | --- | --- | --- |
-| `data/master-resume.demo.json` | Yes | Demo master resume |
-| `data/master-resume.personal.json` | **No** | Locked wording from your ATS PDF |
-| `data/Bhavik_Joshi_Resume.pdf` | **No** | Original PDF reference copy |
+| `data/master-resume.demo.json` | Yes | Demo master resume (shape reference) |
+| `data/master-resume.personal.json` | **No** | Local editing copy of your locked resume |
+
+```bash
+npm run resume:sync    # import/refresh your locked resume into Postgres
+```
+
+`resume:sync` validates completeness, upserts `CandidateProfile.masterResume`, and re-projects the application identity (name, email, links) from it — identity is always a live projection, never a stale one-time seed.
 
 PDF layout (PDFKit / Helvetica, serverless-safe):
 
@@ -173,6 +208,9 @@ cp .env.example .env
 | `TELEGRAM_WEBHOOK_SECRET` | Optional webhook secret header |
 | `NEXT_PUBLIC_APP_URL` | Public app URL |
 | `CRON_SECRET` | Protect cron + telegram setup routes |
+| `APPLY_WORKER_SECRET` | **Required for auto-apply** — `/api/apply/*` rejects everything with 401 when unset (fail-closed) |
+| `APPLY_EMAIL_TO` | Recipient for apply emails — required, no hardcoded fallback |
+| `GMAIL_USER` / `GMAIL_APP_PASSWORD` | Free Gmail SMTP for apply emails |
 | `ZYTE_API_KEY` / `ZYTE_PROJECT_ID` | Optional Wellfound via Scrapy Cloud |
 
 ### 3. Database + profile
@@ -181,6 +219,7 @@ cp .env.example .env
 npx prisma db push
 npx prisma generate
 npm run profile:seed
+npm run resume:sync    # lock your master resume into Postgres
 ```
 
 ### 4. Run
@@ -303,7 +342,7 @@ npm run apply:worker
 | `apply_min_score` | 75 |
 | `apply_enabled` | true |
 | `apply_prefer_auto_ats` | true (Greenhouse/Lever/Ashby fill quota first) |
-| `apply_email_to` | your Gmail |
+| `apply_email_to` | **required** — no fallback; email sending fails loudly if unset |
 
 Target company boards: edit [`data/target-companies.json`](data/target-companies.json).
 
@@ -319,11 +358,29 @@ Unsupported ATS (Workday, captcha, custom) → `needs_review` (never fake-submit
 
 RemoteOK / Remotive require attribution if you republish their feeds.
 
+### Safety rails
+
+- **Pre-submit check** — before clicking Submit, the worker re-scans the live form for empty `required` fields plus name/email/resume essentials; anything unverified downgrades to `needs_review` instead of submitting a broken application.
+- **Per-application email** — every `submitted` / `needs_review` outcome sends one real-time email with the job, AI score/reason, apply URL, and the exact tailored resume PDF attached.
+- **Resume provenance** — the exact PDF bytes uploaded for each application are stored as a `ResumeArtifact` (sha256-hashed) and downloadable at `GET /api/applications/:id/resume`, so "which resume did company X receive" is always answerable.
+- **Fail-closed everything** — missing worker secret → 401; missing master resume → queue halts + Telegram alert; missing email recipient → send refused + alert. No silent demo-data substitution, ever.
+
+---
+
+## Community
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, architecture ground rules, how to add a job source
+- [SECURITY.md](SECURITY.md) — private vulnerability reporting + deployment hardening
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- CI runs lint + build on every PR; a weekly workflow live-tests all 13 job sources
+
+If Remotify lands you interviews, consider [sponsoring](https://github.com/sponsors/Bhav-ikkk) or starring the repo — it keeps the sources maintained.
+
 ---
 
 ## License
 
-MIT — contributions welcome under the same terms.
+[MIT](LICENSE) — contributions welcome under the same terms.
 
 ---
 
