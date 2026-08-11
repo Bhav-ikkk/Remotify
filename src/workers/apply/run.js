@@ -16,6 +16,7 @@ import { generateMasterResumePdf } from "../../services/resume/pdf.js";
 import { runAtsAdapter } from "./adapters/index.js";
 import { sendApplyDigestEmail } from "../../services/apply/email.js";
 import { getApplyStatusSummary } from "../../services/apply/queue.js";
+import { storeResumeArtifact } from "../../services/apply/artifacts.js";
 import { prisma } from "../../services/database.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -107,19 +108,27 @@ async function main() {
 
       let resumePath = "";
       let resumeFileName = "";
+      let resumeArtifact = null;
       try {
-        const stubProfile = {
-          slug: "bhavik-joshi",
-          fullName: identity.fullName,
-        };
+        // Master resume is read from the DB CandidateProfile (no local file,
+        // no stub) — throws loudly if no complete master resume exists.
         const { buffer, filename, resume } = await generateMasterResumePdf(
-          stubProfile,
+          null,
           { job, useAi: true }
         );
         resumeFileName = filename;
         resumePath = resolve(outDir, filename);
         writeFileSync(resumePath, buffer);
-        console.log(`  resume: ${resumePath} (${buffer.length} bytes)`);
+        // Durable provenance: persist the exact bytes before any upload so
+        // "which resume did company X receive" is always answerable.
+        resumeArtifact = await storeResumeArtifact({
+          applicationId: application.id,
+          fileName: filename,
+          buffer,
+        });
+        console.log(
+          `  resume: ${resumePath} (${buffer.length} bytes, sha256 ${resumeArtifact.sha256.slice(0, 12)}…)`
+        );
         console.log(`  headline: ${resume.headline}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -163,7 +172,12 @@ async function main() {
         error: result.error,
         confirmationText: result.confirmationText,
         resumeFileName,
-        resumeMeta: { path: resumePath, dryRun },
+        resumeMeta: {
+          path: resumePath,
+          dryRun,
+          artifactId: resumeArtifact?.id || null,
+          sha256: resumeArtifact?.sha256 || null,
+        },
       });
       outcomes.push({ id: application.id, status: result.status });
       processed += 1;
