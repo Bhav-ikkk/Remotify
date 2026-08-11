@@ -1,6 +1,7 @@
 /**
  * Ashby jobs.ashbyhq.com filler (best-effort).
  */
+import { preSubmitCheck } from "./verify.js";
 
 /**
  * @param {import('playwright').Page} page
@@ -83,6 +84,10 @@ export async function applyAshby(page, ctx) {
       error: null,
     };
   }
+
+  // Safety check: confirm required fields were actually filled before Submit
+  const blocked = await preSubmitCheck(page, "ashby", filled);
+  if (blocked) return blocked;
 
   try {
     const submit = page

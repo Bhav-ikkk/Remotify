@@ -2,6 +2,7 @@
  * Greenhouse job board filler (boards.greenhouse.io / job-boards.greenhouse.io).
  * Best-effort field mapping; dryRun skips final Submit click.
  */
+import { preSubmitCheck } from "./verify.js";
 
 /**
  * @param {import('playwright').Page} page
@@ -139,6 +140,10 @@ export async function applyGreenhouse(page, ctx) {
       error: null,
     };
   }
+
+  // Safety check: confirm required fields were actually filled before Submit
+  const blocked = await preSubmitCheck(root, "greenhouse", filled);
+  if (blocked) return blocked;
 
   // Submit
   const submitSelectors = [

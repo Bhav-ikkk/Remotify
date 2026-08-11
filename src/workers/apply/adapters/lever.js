@@ -1,6 +1,7 @@
 /**
  * Lever jobs.lever.co filler.
  */
+import { preSubmitCheck } from "./verify.js";
 
 /**
  * @param {import('playwright').Page} page
@@ -81,6 +82,10 @@ export async function applyLever(page, ctx) {
       error: null,
     };
   }
+
+  // Safety check: confirm required fields were actually filled before Submit
+  const blocked = await preSubmitCheck(page, "lever", filled);
+  if (blocked) return blocked;
 
   try {
     const submit = page
