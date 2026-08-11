@@ -5,7 +5,10 @@ import {
   listApplications,
 } from "@/services/apply/queue";
 import { buildApplicationsExcelBuffer } from "@/services/apply/export";
-import { ensureApplicationIdentity } from "@/services/apply/identity";
+import {
+  ensureApplicationIdentity,
+  getActiveIdentity,
+} from "@/services/apply/identity";
 
 /**
  * GET /api/applications?status=&export=1
@@ -29,22 +32,35 @@ export async function GET(request) {
       });
     }
 
-    const [summary, applications, identity] = await Promise.all([
+    const [summary, applications] = await Promise.all([
       getApplyStatusSummary(),
       listApplications({ status, take: 100 }),
-      ensureApplicationIdentity(),
     ]);
+
+    // Identity resolution needs a complete master resume in the DB; the list
+    // view should still load when it's missing, surfacing the error instead.
+    let identity = null;
+    let identityError = null;
+    try {
+      identity = await ensureApplicationIdentity();
+    } catch (error) {
+      identityError = error instanceof Error ? error.message : String(error);
+      identity = await getActiveIdentity();
+    }
 
     return NextResponse.json({
       success: true,
       summary,
       applications,
-      identity: {
-        id: identity.id,
-        fullName: identity.fullName,
-        email: identity.email,
-        phone: identity.phone,
-      },
+      identity: identity
+        ? {
+            id: identity.id,
+            fullName: identity.fullName,
+            email: identity.email,
+            phone: identity.phone,
+          }
+        : null,
+      identityError,
     });
   } catch (error) {
     return NextResponse.json(
