@@ -74,7 +74,7 @@ const RESPONSE_SCHEMA = {
  * @param {{ apiKey?: string, useAi?: boolean }} [options]
  */
 export async function tailorResumeForJob(profile, job, options = {}) {
-  const master = buildMasterResumeDocument(profile);
+  const master = await buildMasterResumeDocument(profile);
   if (!job) {
     return toRenderModel(master, null, null);
   }

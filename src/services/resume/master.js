@@ -7,13 +7,13 @@ import { tailorResumeForJob } from "./tailor.js";
 
 /**
  * @deprecated Use tailorResumeForJob for async AI tailor, or buildMasterResumeDocument.
- * Sync heuristic-only builder for tests.
+ * Heuristic-only builder for tests (no AI call).
  * @param {object} profile
  * @param {{ job?: object }} [options]
  */
-export function buildMasterResume(profile, options = {}) {
-  // Sync path: template only (no AI). Callers that need AI must use tailorResumeForJob.
-  const master = buildMasterResumeDocument(profile);
+export async function buildMasterResume(profile, options = {}) {
+  // Template only (no AI). Callers that need AI must use tailorResumeForJob.
+  const master = await buildMasterResumeDocument(profile);
   const job = options.job || null;
   if (!job) {
     return {

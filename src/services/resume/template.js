@@ -1,38 +1,135 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { prisma } from "../database.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "../../..");
 
 /**
- * Load locked master resume JSON (personal preferred, demo fallback).
- * This is the source of truth for PDF wording/structure.
+ * Load the locked master resume document.
+ *
+ * Source of truth is the active CandidateProfile.masterResume column in
+ * Postgres (works on Vercel and the local worker alike — no local files).
+ * The only exception is the explicit RESUME_DEMO=1 escape hatch, which reads
+ * the committed demo file for open-source demos and is loudly logged.
+ *
+ * Fails loudly with an actionable error when no active CandidateProfile with
+ * a complete master resume exists. Never silently substitutes demo data.
+ *
+ * @returns {Promise<{ source: "db" | "demo-file", profile: object | null, data: object }>}
  */
-export function loadMasterResumeJson() {
-  const personal = resolve(root, "data/master-resume.personal.json");
-  const demo = resolve(root, "data/master-resume.demo.json");
-  const forceDemo = process.env.RESUME_DEMO === "1";
-  const path = !forceDemo && existsSync(personal) ? personal : demo;
-  if (!existsSync(path)) {
-    throw new Error(`Master resume JSON missing at ${path}`);
+export async function loadMasterResume() {
+  if (process.env.RESUME_DEMO === "1") {
+    const demoPath = resolve(root, "data/master-resume.demo.json");
+    if (!existsSync(demoPath)) {
+      throw new Error(`RESUME_DEMO=1 set but demo resume missing at ${demoPath}`);
+    }
+    console.warn(
+      "[resume:template] RESUME_DEMO=1 — using demo master resume file. Never use this for real applications."
+    );
+    return {
+      source: "demo-file",
+      profile: null,
+      data: JSON.parse(readFileSync(demoPath, "utf8")),
+    };
   }
-  return { path, data: JSON.parse(readFileSync(path, "utf8")) };
+
+  const profile = await prisma.candidateProfile.findFirst({
+    where: { isActive: true },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (!profile) {
+    throw new Error(
+      "No active CandidateProfile in the database. Seed one with `npm run profile:seed`, then import your locked master resume with `npm run resume:sync`."
+    );
+  }
+
+  const data = profile.masterResume;
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error(
+      `CandidateProfile "${profile.slug}" has no masterResume document. Import your locked master resume into the database with \`npm run resume:sync\` (reads data/master-resume.personal.json).`
+    );
+  }
+
+  const missing = validateMasterResumeDocument(data);
+  if (missing.length > 0) {
+    throw new Error(
+      `masterResume on CandidateProfile "${profile.slug}" is incomplete (missing: ${missing.join(", ")}). Fix the source JSON and re-run \`npm run resume:sync\`.`
+    );
+  }
+
+  return { source: "db", profile, data };
+}
+
+/**
+ * Check a master resume document has everything a real application needs.
+ * @param {object} data
+ * @returns {string[]} Human-readable list of missing pieces (empty = complete)
+ */
+export function validateMasterResumeDocument(data) {
+  const missing = [];
+  if (!data || typeof data !== "object") return ["entire document"];
+
+  if (!String(data.fullName || data.displayName || "").trim()) {
+    missing.push("fullName");
+  }
+  const contact = data.contact || {};
+  if (!String(contact.email || "").trim()) missing.push("contact.email");
+  if (!String(data.summary || "").trim()) missing.push("summary");
+
+  const skillCount = Object.values(data.skills || {})
+    .flat()
+    .filter(Boolean).length;
+  if (skillCount === 0) missing.push("skills");
+
+  const hasExperience = Array.isArray(data.experience) && data.experience.length > 0;
+  const hasProjects = Array.isArray(data.projects) && data.projects.length > 0;
+  if (!hasExperience && !hasProjects) missing.push("experience or projects");
+
+  return missing;
 }
 
 /**
  * Canonical master resume document for rendering + AI tailor.
- * Prefers locked JSON from your ATS PDF; falls back to CandidateProfile.
+ *
+ * Reads the locked master resume from the DB CandidateProfile. When no
+ * locked document exists, a full CandidateProfile (with skills/experiences/
+ * projects relations) may be rendered directly; anything less throws so a
+ * placeholder resume can never represent a real application.
  *
  * @param {object} [profile]
  */
-export function buildMasterResumeDocument(profile) {
+export async function buildMasterResumeDocument(profile) {
   try {
-    const { data } = loadMasterResumeJson();
+    const { data } = await loadMasterResume();
     return fromLockedJson(data);
-  } catch {
-    return fromProfile(profile || {});
+  } catch (error) {
+    if (isRenderableProfile(profile)) {
+      console.warn(
+        "[resume:template] locked master resume unavailable, rendering from CandidateProfile relations:",
+        error instanceof Error ? error.message : error
+      );
+      return fromProfile(profile);
+    }
+    throw error;
   }
+}
+
+/**
+ * A profile is renderable only if it carries real resume content —
+ * a bare stub (name only) must never turn into a near-empty PDF.
+ * @param {object} profile
+ */
+function isRenderableProfile(profile) {
+  if (!profile || typeof profile !== "object") return false;
+  if (!String(profile.fullName || "").trim()) return false;
+  const hasSkills = Array.isArray(profile.skills) && profile.skills.length > 0;
+  const hasExperiences =
+    Array.isArray(profile.experiences) && profile.experiences.length > 0;
+  const hasProjects = Array.isArray(profile.projects) && profile.projects.length > 0;
+  return hasSkills || hasExperiences || hasProjects;
 }
 
 /**
