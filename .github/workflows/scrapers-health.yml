@@ -1,0 +1,33 @@
+name: Scrapers health
+
+# Weekly live check that every job source still returns schema-valid jobs.
+# Network-dependent by design, so it never blocks PRs — it only opens a
+# signal when a source silently breaks.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  live-scrape:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run live scraper suite
+        run: npm run test:scrapers
